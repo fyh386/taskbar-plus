@@ -1,86 +1,63 @@
-# TaskBar Plus
+<h1 align="center">TaskBar Plus</h1>
 
-可插拔的 Windows 任务栏插件工具。在任务栏上挂一条可定制的 Dock，按需安装插件：系统监控、剪贴板历史、端口速查、抓包代理、Git 助手……全部即点即用。
+<p align="center">
+  可插拔的 Windows 任务栏插件工具 —— 在任务栏上挂一条可定制的 Dock，按需安装插件，即点即用。
+</p>
 
-- **技术栈**：Tauri 2（Rust + WebView2）+ 无构建原生前端（无打包步骤，低系统占用）
-- **插件化**：插件 = `plugin.json` + `index.html` 单文件，宿主以 iframe（srcdoc）加载，通过 `window.tbp` 桥调用宿主能力；市场可在线安装 / 更新 / 一键卸载，无需重新编译主程序
-- **权限网关**：每个插件声明所需权限（network / shell / fs / clipboard / hosts / net / docker / git / proxy …），主程序预置常见权限，插件调用逐条校验
+<p align="center">
+  <img alt="Tauri 2" src="https://img.shields.io/badge/Tauri%202-Rust%20%2B%20WebView2-ffc131">
+  <img alt="前端" src="https://img.shields.io/badge/%E5%89%8D%E7%AB%AF-%E5%8E%9F%E7%94%9FJS%20%C2%B7%20%E6%97%A0%E6%89%93%E5%8C%85-4c8dff">
+  <img alt="插件" src="https://img.shields.io/badge/%E6%8F%92%E4%BB%B6-18%20%E5%86%85%E7%BD%AE%20%2B%20%E5%B8%82%E5%9C%BA%E5%9C%A8%E7%BA%BF%E5%AE%89%E8%A3%85-3fb950">
+  <img alt="占用" src="https://img.shields.io/badge/%E7%B3%BB%E7%BB%9F%E5%8D%A0%E7%94%A8-%E4%BD%8E-8a5cff">
+</p>
 
-## 界面预览
+<p align="center">
+  <img src="docs/screenshots/dock.png" alt="Dock 条效果示意" width="720">
+  <br>
+  <sub>Dock 条效果示意：插件条贴任务栏悬浮，点击弹出面板（截图为示例数据渲染）。</sub>
+</p>
 
-以下截图为各内置插件的弹出面板（示例数据渲染）：
+## 特性
 
-### 系统监控
-CPU / 内存 / 网络迷你曲线，点击展开详情与一键清理内存。
-![系统监控](docs/screenshots/monitor.png)
+- **可插拔插件系统** —— 插件 = `plugin.json` + `index.html` 单文件，宿主以 iframe 加载、`window.tbp` 桥通信；市场在线安装 / 更新 / 一键卸载，装插件不需要重新编译主程序
+- **权限网关** —— 每个插件声明所需权限（network / shell / fs / clipboard / hosts / net / docker / git / proxy …），每次调用逐条校验
+- **可定制外观** —— 背景颜色 / 背景图片 / 不透明度、dock 最大长度与拖拽、全局与单插件自定义 CSS 注入、多套预设皮肤一键切换
+- **按需采样** —— 禁用插件立即退订后台任务（如系统监控停止采样），不占资源
 
-### 剪贴板历史
-自动记录文本复制历史，点击即可重新复制。
-![剪贴板历史](docs/screenshots/clipboard.png)
+## 内置插件
 
-### 快捷输入
-回车一键翻译，Ctrl+回车问 AI，支持多会话历史。
-![快捷输入](docs/screenshots/quick-input.png)
-
-### 端口速查
-输入端口号立刻看到是谁占用的，一键结束进程；附全部 LISTEN 端口表。
-![端口速查](docs/screenshots/port-killer.png)
-
-### 抓包代理
-本地 MITM 系统代理抓包，HTTPS 解密，支持筛选与详情查看。
-![抓包代理](docs/screenshots/proxy-capture.png)
-
-### Hosts 切换
-Hosts 编辑与多套配置方案切换，保存即应用（提权写入 + 自动刷新 DNS）。
-![Hosts 切换](docs/screenshots/hosts-switch.png)
-
-### Git 助手
-任务栏查看分支，一键 Pull / Push / 切换分支。
-![Git 助手](docs/screenshots/git.png)
-
-### Docker 面板
-容器状态灯一览，一键重启、查看日志（走 Docker Desktop 命名管道）。
-![Docker 面板](docs/screenshots/docker-panel.png)
-
-### HTTP 请求
-类 Postman 的轻量 HTTP 调试：方法 / 请求头 / 请求体 / 响应查看。
-![HTTP 请求](docs/screenshots/http-req.png)
-
-### 保活请求
-定时发起 HTTP 请求，保活 VPN / 代理连接，防止长时间无流量断连。
-![保活请求](docs/screenshots/keep-alive.png)
-
-### 快捷启动
-自定义应用 / 网站 / 文件夹快捷图标，点击即开。
-![快捷启动](docs/screenshots/launcher.png)
-
-### 邮件提醒
-IMAP 未读邮件提醒：QQ / 163 / Gmail 授权码登录，定时轮询未读数。
-![邮件提醒](docs/screenshots/mail-alert.png)
-
-### 文件搜索
-基于 Everything 的本地文件秒搜（需本地安装 Everything 并开启 HTTP 服务器）。
-![文件搜索](docs/screenshots/everything-search.png)
-
-### RSS 订阅
-RSS / Atom 订阅聚合：轮询抓取，条上滚动头条，面板浏览全部。
-![RSS 订阅](docs/screenshots/rss-reader.png)
-
-### 股票盯盘
-自选股实时行情轮询，涨红跌绿，点击查看详情。
-![股票盯盘](docs/screenshots/stock-watch.png)
-
-### 天气
-当前城市天气（wttr.in）。
-![天气](docs/screenshots/weather.png)
-
-### 网盘 WebDAV
-WebDAV 网盘管理：浏览目录、拖拽上传、下载与整理。
-![网盘 WebDAV](docs/screenshots/webdav.png)
-
-### webtool 工具箱
-开发者常用工具：JSON 格式化、URL / Base64 编解码、时间戳、哈希、随机密码等。
-![webtool 工具箱](docs/screenshots/webtool.png)
+<table>
+  <tr>
+    <td width="33%" align="center"><b>系统监控</b><br>CPU / 内存 / 网络迷你曲线，一键清理内存<br><img src="docs/screenshots/monitor.png" width="240"></td>
+    <td width="33%" align="center"><b>快捷输入</b><br>回车翻译，Ctrl+回车问 AI<br><img src="docs/screenshots/quick-input.png" width="240"></td>
+    <td width="33%" align="center"><b>剪贴板历史</b><br>记录文本复制历史，点击重贴<br><img src="docs/screenshots/clipboard.png" width="240"></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><b>端口速查</b><br>输入端口看谁占用，一键结束进程<br><img src="docs/screenshots/port-killer.png" width="240"></td>
+    <td width="33%" align="center"><b>抓包代理</b><br>类 Fiddler 系统代理抓包，HTTPS 解密<br><img src="docs/screenshots/proxy-capture.png" width="240"></td>
+    <td width="33%" align="center"><b>Hosts 切换</b><br>多套 hosts 方案保存即应用<br><img src="docs/screenshots/hosts-switch.png" width="240"></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><b>Git 助手</b><br>看分支，一键 Pull / Push / 切分支<br><img src="docs/screenshots/git.png" width="240"></td>
+    <td width="33%" align="center"><b>Docker 面板</b><br>容器状态灯，一键重启 / 看日志<br><img src="docs/screenshots/docker-panel.png" width="240"></td>
+    <td width="33%" align="center"><b>HTTP 请求</b><br>轻量 Postman：方法 / 头 / 体 / 响应<br><img src="docs/screenshots/http-req.png" width="240"></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><b>保活请求</b><br>定时 HTTP 请求，保活 VPN 防断连<br><img src="docs/screenshots/keep-alive.png" width="240"></td>
+    <td width="33%" align="center"><b>快捷启动</b><br>应用 / 网站 / 文件夹图标即点即开<br><img src="docs/screenshots/launcher.png" width="240"></td>
+    <td width="33%" align="center"><b>邮件提醒</b><br>IMAP 未读轮询（QQ / 163 / Gmail）<br><img src="docs/screenshots/mail-alert.png" width="240"></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><b>文件搜索</b><br>基于 Everything 的本地秒搜<br><img src="docs/screenshots/everything-search.png" width="240"></td>
+    <td width="33%" align="center"><b>RSS 订阅</b><br>订阅聚合，条上滚动头条<br><img src="docs/screenshots/rss-reader.png" width="240"></td>
+    <td width="33%" align="center"><b>股票盯盘</b><br>自选股实时行情，涨红跌绿<br><img src="docs/screenshots/stock-watch.png" width="240"></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><b>天气</b><br>当前城市天气（wttr.in）<br><img src="docs/screenshots/weather.png" width="240"></td>
+    <td width="33%" align="center"><b>网盘 WebDAV</b><br>浏览目录、拖拽上传 / 下载<br><img src="docs/screenshots/webdav.png" width="240"></td>
+    <td width="33%" align="center"><b>webtool 工具箱</b><br>JSON / Base64 / 时间戳 / 哈希等<br><img src="docs/screenshots/webtool.png" width="240"></td>
+  </tr>
+</table>
 
 ## 构建与运行
 
@@ -131,3 +108,7 @@ src-tauri/src/      Rust 后端：main.rs / stats.rs / git.rs / plugins.rs / con
 tests/              协议契约测试、冒烟脚本、截图流水线
 release/            预编译 exe
 ```
+
+## 下载
+
+预编译可执行文件见 [`release/taskbar-plus.exe`](release/taskbar-plus.exe)。
