@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { background:transparent; font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+  body { display:flex; flex-direction:column; justify-content:flex-end; height:100vh; overflow:hidden; }
+  #strip { height:40px; display:flex; align-items:center; gap:9px; padding:0 10px; cursor:pointer;
+    overflow:hidden; white-space:nowrap; flex-shrink:0;
+    background:#2b2c33; border:1px solid #41424d; border-radius:7px; }
+  .cell { display:flex; flex-direction:column; align-items:center; gap:1px; flex-shrink:0; }
+  canvas { display:block; }
+  .val { font-size:10px; color:#9ab8e8; font-family:Consolas,monospace; }
+  #detail { display:none; background:#1e1f24; border:1px solid #3a3b45; border-radius:10px;
+    margin:4px 4px 6px; padding:13px 15px; color:#d5d6de; font-size:12px; width:308px; }
+  #detail.open { display:block; }
+  .row { margin-bottom:11px; }
+  .row-mem { display:flex; align-items:center; gap:10px; }
+  .row-mem .grow { flex:1; min-width:0; }
+  .row .hd { display:flex; justify-content:space-between; margin-bottom:4px; color:#9a9ba6; font-size:11.5px; }
+  .row .hd b { color:#8ab8ff; font-family:Consolas,monospace; }
+  .track { height:5px; background:#141519; border-radius:3px; overflow:hidden; }
+  .fill { height:100%; border-radius:3px; transition:width .5s; }
+  #clean-mem { height:24px; margin-left:10px; padding:0 10px; border:1px solid #3a3b45; border-radius:6px;
+    background:#141519; color:#9ab8e8; font-size:11px; cursor:pointer; align-self:center; flex-shrink:0; }
+  #clean-mem:hover { border-color:#4c8dff; color:#fff; }
+  #clean-mem:disabled { opacity:.5; cursor:default; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:6px 12px; font-size:11px; color:#9a9ba6; }
+  .grid b { color:#d5d6de; font-weight:500; }
+</style>
+</head>
+<body>
+  <div id="detail">
+    <div class="row"><div class="hd"><span>CPU</span><b id="d-cpu">--</b></div><div class="track"><div class="fill" id="b-cpu" style="background:linear-gradient(90deg,#f6a821,#f85149)"></div></div></div>
+    <div class="row row-mem">
+      <div class="grow"><div class="hd"><span>内存</span><b id="d-mem">--</b></div><div class="track"><div class="fill" id="b-mem" style="background:linear-gradient(90deg,#4c8dff,#8a5cff)"></div></div></div>
+      <button id="clean-mem" title="清理内存：回收各进程工作集（瞬间可能轻微卡顿）">清理内存</button>
+    </div>
+    <div class="row">
+      <div class="hd"><span>网络</span><b id="d-net">--</b></div>
+      <div class="track"><div class="fill" id="b-net" style="background:linear-gradient(90deg,#3fb950,#56d4bc)"></div></div>
+    </div>
+    <div class="grid"><span>内存 <b id="g-mem">--</b></span><span>运行时长 <b id="g-uptime">--</b></span></div>
+  </div>
+  <div id="strip"></div>
+<script>
+(async () => {
+  const cfg = await tbp.config();
+  const C = cfg.colors || {};
+  const show = cfg.show || {};
+  const items = [
+    { key:'cpu', color:(C.cpu||'#f6a821'), label:'CPU' },
+    { key:'mem', color:(C.mem||'#4c8dff'), label:'MEM' },
+    { key:'net', color:(C.net||'#3fb950'), label:'NET' },
+  ].filter(i => show[i.key] !== false);
+
+  const strip = document.getElementById('strip');
+  const cells = {};
+  for (const it of items) {
+    const cell = document.createElement('div'); cell.className = 'cell';
+    const cv = document.createElement('canvas'); cv.width = 42; cv.height = 20;
+    const val = document.createElement('span'); val.className = 'val'; val.textContent = '--';
+    cell.append(cv, val); strip.appendChild(cell);
+    cells[it.key] = { cv, val, color: it.color, data: new Array(20).fill(1) };
+  }
+  if (!items.length) strip.innerHTML = '<span style="color:#666;font-size:11px">监控项已全部关闭</span>';
+
+  const boot = Date.now();
+  let expanded = false;
+  const D = id => document.getElementById(id);
+
+  function draw(c, pct) {
+    c.data.push(pct); c.data.shift();
+    const ctx = c.cv.getContext('2d'); ctx.clearRect(0,0,42,20);
+    ctx.beginPath();
+    c.data.forEach((d,i)=>{ const x=i*2.1, y=20-(Math.min(d,100)/100)*18-1; i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+    ctx.strokeStyle = c.color; ctx.lineWidth = 1.4; ctx.stroke();
+    ctx.lineTo(40,20); ctx.lineTo(0,20); ctx.closePath();
+    const g = ctx.createLinearGradient(0,0,0,20);
+    g.addColorStop(0,c.color+'55'); g.addColorStop(1,c.color+'00');
+    ctx.fillStyle = g; ctx.fill();
+  }
+  const fmtBytes = b => b > 1<<30 ? (b/(1<<30)).toFixed(1)+' GB' : Math.round(b/(1<<20))+' MB';
+  const fmtNet = b => b > 1<<20 ? (b/(1<<20)).toFixed(1)+' MB/s' : Math.round(b/1024)+' KB/s';
+
+  tbp.on('stats', s => {
+    const memPct = s.memTotal ? s.memUsed / s.memTotal * 100 : 0;
+    const netMax = Math.max(s.up, s.down);
+    const vals = { cpu: s.cpu, mem: memPct, net: Math.min(100, netMax / 1048576 * 100) };
+    for (const k in cells) { draw(cells[k], vals[k] || 0); }
+    if (cells.cpu) cells.cpu.val.textContent = s.cpu.toFixed(0)+'%';
+    if (cells.mem) cells.mem.val.textContent = memPct.toFixed(0)+'%';
+    if (cells.net) cells.net.val.textContent = fmtNet(netMax);
+    if (expanded) {
+      // 注意：元素 id 为 d-cpu 等连字符形式，不能用作隐式全局变量（d_cpu 不存在）
+      D('d-cpu').textContent = s.cpu.toFixed(1) + '%';
+      D('b-cpu').style.width = s.cpu + '%';
+      D('d-mem').textContent = memPct.toFixed(1) + '%';
+      D('b-mem').style.width = memPct + '%';
+      D('d-net').textContent = '↓' + fmtNet(s.down) + ' ↑' + fmtNet(s.up);
+      const nmax = Math.max(s.up, s.down, 1);
+      D('b-net').style.width = Math.min(100, nmax / 1048576 * 100) + '%';
+      D('g-mem').textContent = fmtBytes(s.memUsed) + ' / ' + fmtBytes(s.memTotal);
+      const sec = (Date.now() - boot) / 1000 | 0;
+      D('g-uptime').textContent = sec > 3600 ? (sec / 3600 | 0) + ' 小时 ' + ((sec % 3600) / 60 | 0) + ' 分' : (sec / 60 | 0) + ' 分 ' + (sec % 60) + ' 秒';
+    }
+  });
+  await tbp.call('stats.subscribe');
+  // 页面隐藏（宿主重载/禁用/卸载本插件）时主动退订采样；宿主侧另有兜底，
+  // 双保险保证禁用后系统采样立即停。计数器有下限保护，重复退订安全
+  window.addEventListener('pagehide', () => { try { tbp.call('stats.unsubscribe'); } catch (e) {} });
+
+  strip.onclick = async () => {
+    expanded = !expanded;
+    document.getElementById('detail').classList.toggle('open', expanded);
+    await tbp.call(expanded ? 'dock.expand' : 'dock.collapse', { height: 168 });
+  };
+  // 宿主因切换其他插件而收起本弹层时，同步本地状态
+  tbp.on('dock.collapsed', () => {
+    expanded = false;
+    document.getElementById('detail').classList.remove('open');
+  });
+
+  // 一键清理内存：回收各进程工作集
+  document.getElementById('clean-mem').onclick = async (e) => {
+    e.stopPropagation();
+    const btn = document.getElementById('clean-mem');
+    btn.disabled = true; btn.textContent = '清理中…';
+    try {
+      const r = await tbp.call('stats.clean_memory');
+      btn.textContent = '已回收 ' + r.processes + ' 个进程';
+    } catch (err) {
+      btn.textContent = '清理失败';
+    }
+    setTimeout(() => { btn.disabled = false; btn.textContent = '清理内存'; }, 3000);
+  };
+  tbp.ready();
+})();
+</script>
+</body>
+</html>

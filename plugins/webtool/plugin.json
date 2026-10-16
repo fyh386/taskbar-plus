@@ -1,0 +1,10 @@
+{
+  "id": "builtin.webtool",
+  "name": "webtool 工具箱",
+  "version": "1.0.0",
+  "author": "TaskBar Plus",
+  "description": "开发者常用工具：JSON、URL/Base64、时间戳、哈希、随机密码等",
+  "permissions": [],
+  "width": { "min": 120, "max": 260, "default": 150 },
+  "config": {}
+}

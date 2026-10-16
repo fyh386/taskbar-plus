@@ -1,0 +1,10 @@
+{
+  "id": "builtin.docker-panel",
+  "name": "Docker 面板",
+  "version": "1.0.0",
+  "author": "TaskBar Plus",
+  "description": "Docker 容器一览：运行状态灯、一键重启、查看日志（走 Docker Desktop 命名管道，无需开端口）",
+  "permissions": ["docker"],
+  "width": { "min": 120, "max": 240, "default": 140 },
+  "config": {}
+}

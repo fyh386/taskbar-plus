@@ -1,0 +1,15 @@
+{
+  "id": "builtin.git",
+  "name": "Git 助手",
+  "version": "1.0.0",
+  "author": "TaskBar Plus",
+  "description": "任务栏查看分支 / 一键 Pull / Push / 切换分支",
+  "permissions": ["git"],
+  "width": { "min": 150, "max": 420, "default": 250 },
+  "config": {
+    "repos": [],
+    "pullMode": "rebase",
+    "autoStash": true,
+    "activeRepo": 0
+  }
+}

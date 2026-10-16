@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { background:transparent; font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+  body { display:flex; flex-direction:column; justify-content:flex-end; height:100vh; overflow:hidden; }
+  #strip { height:40px; display:flex; align-items:center; gap:7px; padding:0 10px; cursor:pointer;
+    overflow:hidden; white-space:nowrap; flex-shrink:0;
+    background:#2b2c33; border:1px solid #41424d; border-radius:7px; }
+  #strip .ic { color:#8ab8ff; display:flex; flex-shrink:0; }
+  #strip .n { font-size:13px; font-weight:600; color:#cfe1ff; font-family:Consolas,monospace; }
+  #strip .lb { font-size:11px; color:#9a9ba6; overflow:hidden; text-overflow:ellipsis; }
+  #strip.on { border-color:#4c8dff; }
+  #strip.ok { border-color:#2f7d4f; }
+  #strip.ok .ic { color:#6ee7a0; }
+  #strip.err { border-color:#8a3535; }
+  #strip.err .ic { color:#f85149; }
+
+  #panel { display:none; background:#1e1f24; border:1px solid #3a3b45; border-radius:10px;
+    margin:4px 4px 6px; padding:12px; color:#d5d6de; font-size:12px; width:360px; flex-shrink:0;
+    max-height:480px; overflow:hidden; }
+  #panel.open { display:block; }
+  .tt { font-size:11px; color:#8ab8ff; margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+  .tt .dot { width:8px; height:8px; border-radius:50%; background:#6a6b76; }
+  .tt .dot.on { background:#6ee7a0; box-shadow:0 0 6px #6ee7a0; }
+  .tt .dot.err { background:#f85149; box-shadow:0 0 6px #f85149; }
+  .tt .sub { color:#6a6b76; }
+  .tb { display:flex; gap:6px; margin-bottom:10px; }
+  .tb button { height:26px; padding:0 12px; border:1px solid #3a3b45; border-radius:6px; background:#141519;
+    color:#9ab8e8; font-size:11.5px; cursor:pointer; white-space:nowrap; }
+  .tb button:hover { border-color:#4c8dff; color:#fff; }
+  .tb button.warn { color:#f6a821; border-color:#5a4a2c; }
+  .tb button.warn:hover { border-color:#f6a821; }
+  .frm { display:flex; flex-direction:column; gap:7px; margin-bottom:10px; }
+  .frm label { display:flex; align-items:center; gap:8px; font-size:11px; color:#9a9ba6; }
+  .frm label span { width:56px; flex-shrink:0; }
+  .frm input { flex:1; height:26px; background:#141519; border:1px solid #2c2d34; border-radius:6px;
+    color:#e6e7ec; font-size:11.5px; padding:0 9px; outline:none; min-width:0; }
+  .frm input:focus { border-color:#4c8dff; }
+  #hist { border:1px solid #2c2d34; border-radius:6px; max-height:150px; overflow-y:auto;
+    scrollbar-width:none; margin-bottom:8px; }
+  #hist::-webkit-scrollbar { display:none; }
+  .hrow { display:flex; align-items:center; gap:8px; padding:4px 8px; font-size:11px;
+    border-bottom:1px solid #23242a; font-family:Consolas,monospace; }
+  .hrow:last-child { border-bottom:none; }
+  .hrow .t { color:#6a6b76; flex-shrink:0; }
+  .hrow .s { width:40px; flex-shrink:0; text-align:right; }
+  .hrow .m { color:#6a6b76; flex:1; text-align:right; }
+  .s.ok { color:#6ee7a0; } .s.err { color:#f85149; }
+  .empty { padding:12px; text-align:center; color:#4c4d56; font-size:11px; }
+  .hint { font-size:10.5px; color:#6a6b76; line-height:1.7; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <div class="tt"><span class="dot" id="dot"></span><span id="st-txt">已暂停</span><span class="sub" id="st-sub"></span></div>
+    <div class="tb">
+      <button id="b-toggle">启动</button>
+      <button id="b-now">立即执行</button>
+    </div>
+    <div class="frm">
+      <label><span>请求地址</span><input id="f-url" placeholder="https:// 建议填走 VPN 才通的目标"></label>
+      <label><span>间隔(秒)</span><input id="f-int" type="number" min="5" max="3600"></label>
+      <label><span>超时(秒)</span><input id="f-tmo" type="number" min="3" max="60"></label>
+    </div>
+    <div id="hist"></div>
+    <div class="hint">定时发起 HTTP 请求防止 VPN/代理因长时间无流量断连。要真正起到保活作用，地址必须选择「只有 VPN 连通时才访问得到」的目标；填百度这类国内直连地址，流量根本不会经过 VPN。</div>
+  </div>
+  <div id="strip" title="保活请求">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg></span>
+    <span class="n" id="s-n">--:--</span>
+    <span class="lb" id="s-lb">保活</span>
+  </div>
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  const strip = $('strip'), panel = $('panel');
+  let expanded = false;
+  let cfg = await tbp.config();
+  let running = cfg.running !== false;
+  let last = null;            // {ok, status, ms, ts, err}
+  let history = [];           // 最近记录，新在前
+  const HIST_CAP = 8;
+
+  // ---------- 配置 ----------
+  function clamp(n, lo, hi, dft) {
+    n = parseInt(n, 10);
+    if (isNaN(n)) return dft;
+    return Math.min(hi, Math.max(lo, n));
+  }
+  function applyCfg() {
+    cfg.url = String(cfg.url || '').trim() || 'https://www.baidu.com';
+    cfg.intervalSec = clamp(cfg.intervalSec, 5, 3600, 300);
+    cfg.timeoutSec = clamp(cfg.timeoutSec, 3, 60, 10);
+    $('f-url').value = cfg.url;
+    $('f-int').value = cfg.intervalSec;
+    $('f-tmo').value = cfg.timeoutSec;
+  }
+  let saveTimer = 0;
+  function saveCfg() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { try { tbp.saveConfig(cfg); } catch (e) {} }, 300);
+  }
+
+  // ---------- 调度 ----------
+  let remain = 0;             // 距下次请求的秒数
+  let inflight = false;
+  function fmt(s) {
+    s = Math.max(0, s | 0);
+    const m = (s / 60) | 0;
+    return (m < 10 ? '0' : '') + m + ':' + ((s % 60) < 10 ? '0' : '') + (s % 60);
+  }
+  function renderStrip() {
+    $('s-n').textContent = running ? fmt(remain) : '--:--';
+    $('s-lb').textContent = running ? '保活' : '已暂停';
+    strip.classList.toggle('on', running && !last);
+    strip.classList.toggle('ok', !!(running && last && last.ok));
+    strip.classList.toggle('err', !!(running && last && !last.ok));
+  }
+  function renderPanel() {
+    $('dot').className = 'dot' + (!running ? '' : (last && !last.ok ? ' err' : ' on'));
+    $('st-txt').textContent = running ? '运行中' : '已暂停';
+    $('st-sub').textContent = running
+      ? ('下次 ' + fmt(remain) + (last ? ' · 上次 ' + (last.ok ? (last.status + ' · ' + last.ms + 'ms') : '失败') : ''))
+      : (last ? ('上次 ' + (last.ok ? (last.status + ' · ' + last.ms + 'ms') : '失败')) : '');
+    $('b-toggle').textContent = running ? '停止' : '启动';
+    $('b-toggle').className = running ? 'warn' : '';
+    const h = $('hist');
+    if (!history.length) {
+      h.innerHTML = '<div class="empty">暂无记录</div>';
+    } else {
+      h.innerHTML = history.map(r =>
+        '<div class="hrow"><span class="t">' + r.time + '</span>' +
+        '<span class="s ' + (r.ok ? 'ok' : 'err') + '">' + (r.ok ? r.status : 'ERR') + '</span>' +
+        '<span class="m">' + (r.ok ? r.ms + 'ms' : (r.err || '')) + '</span></div>').join('');
+    }
+  }
+  function render() { renderStrip(); if (expanded) renderPanel(); }
+
+  async function fire(manual) {
+    if (inflight) return;
+    inflight = true;
+    const t0 = Date.now();
+    let rec;
+    try {
+      const r = await tbp.call('http.request', {
+        method: 'GET', url: cfg.url, maxBytes: 2048, timeoutMs: cfg.timeoutSec * 1000,
+        headers: { 'cache-control': 'no-cache', 'pragma': 'no-cache' }
+      });
+      const ok = r.status >= 200 && r.status < 400;
+      rec = { ok, status: r.status, ms: Date.now() - t0 };
+    } catch (e) {
+      rec = { ok: false, status: 0, ms: Date.now() - t0, err: String(e && e.message || e).slice(0, 40) };
+    }
+    last = rec;
+    const d = new Date();
+    history.unshift({
+      ok: rec.ok, status: rec.status, ms: rec.ms, err: rec.err,
+      time: ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2)
+    });
+    if (history.length > HIST_CAP) history.length = HIST_CAP;
+    if (running || manual) remain = cfg.intervalSec;
+    render();
+    inflight = false;
+  }
+
+  setInterval(() => {
+    if (!running) return;
+    remain--;
+    if (remain <= 0) { fire(); remain = cfg.intervalSec; }
+    renderStrip();
+    if (expanded) { $('st-sub').textContent = '下次 ' + fmt(remain) + (last ? ' · 上次 ' + (last.ok ? (last.status + ' · ' + last.ms + 'ms') : '失败') : ''); $('s-n').textContent = fmt(remain); }
+  }, 1000);
+
+  // ---------- 交互 ----------
+  strip.onclick = async () => {
+    expanded = !expanded;
+    panel.classList.toggle('open', expanded);
+    await tbp.call(expanded ? 'dock.expand' : 'dock.collapse', { height: 400 });
+    if (expanded) renderPanel();
+  };
+  tbp.on('dock.collapsed', () => { expanded = false; panel.classList.remove('open'); });
+
+  $('b-toggle').onclick = () => {
+    running = !running;
+    cfg.running = running;
+    if (running) remain = 0; // 启动后立刻执行一次，马上验证连通性
+    saveCfg();
+    render();
+  };
+  $('b-now').onclick = () => fire(true);
+  $('f-url').onchange = () => { cfg.url = $('f-url').value.trim(); saveCfg(); };
+  $('f-int').onchange = () => { cfg.intervalSec = clamp($('f-int').value, 5, 3600, 300); $('f-int').value = cfg.intervalSec; remain = Math.min(remain, cfg.intervalSec); saveCfg(); };
+  $('f-tmo').onchange = () => { cfg.timeoutSec = clamp($('f-tmo').value, 3, 60, 10); $('f-tmo').value = cfg.timeoutSec; saveCfg(); };
+
+  // ---------- 启动 ----------
+  applyCfg();
+  if (running) { remain = 3; } // 载入后 3 秒首检，尽快反映当前网络状态
+  render();
+  tbp.ready();
+})();
+</script>
+</body>
+</html>

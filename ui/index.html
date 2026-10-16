@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>TaskBar Plus</title>
+<link rel="stylesheet" href="style.css?v=50">
+</head>
+<body>
+  <!-- dock 窗口内容 -->
+  <div id="dock-root" hidden>
+    <div id="dock">
+      <div id="pan-grip" title="按住左右拖拽，查看被隐藏的插件">⠿</div>
+      <div id="strip-bar">
+        <div id="plugin-row"></div>
+        <div id="dock-tail">
+          <button class="tail-btn" id="btn-settings" title="设置">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 设置窗口内容 -->
+  <div id="settings-root" hidden>
+    <div id="sw">
+      <div id="sw-nav">
+        <div class="brand">
+          <div class="brand-logo"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+          <div><div class="brand-name">TaskBar Plus</div><div class="brand-sub">设置中心</div></div>
+        </div>
+        <div class="nav-item on" data-page="manage"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>插件管理</div>
+        <div class="nav-item" data-page="market"><svg viewBox="0 0 24 24"><path d="M4 7h16l-1.5 12a2 2 0 0 1-2 1.8h-9A2 2 0 0 1 5.5 19z"/><path d="M8 7a4 4 0 0 1 8 0"/></svg>插件市场</div>
+        <div class="nav-item" data-page="import"><svg viewBox="0 0 24 24"><path d="M12 3v10M8 9l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>导入安装</div>
+        <div class="nav-sec">系统</div>
+        <div class="nav-item" data-page="general"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>通用设置</div>
+        <div class="nav-item" data-page="about"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>关于</div>
+      </div>
+      <div id="sw-content">
+        <div class="sw-page on" id="page-manage"></div>
+        <div class="sw-page" id="page-market"></div>
+        <div class="sw-page" id="page-import"></div>
+        <div class="sw-page" id="page-general"></div>
+        <div class="sw-page" id="page-about"></div>
+      </div>
+    </div>
+    <div id="json-modal" hidden>
+      <div class="json-box">
+        <div class="jb-head"><span id="json-title">插件配置</span><button class="mini-btn" id="json-close">✕</button></div>
+        <div class="jb-body">
+          <div class="jb-tip">编辑该插件的用户配置（JSON），保存后与插件默认配置合并生效。</div>
+          <textarea id="json-editor" spellcheck="false"></textarea>
+          <div class="jb-err" id="json-err"></div>
+        </div>
+        <div class="jb-foot">
+          <button class="mini-btn" id="json-cancel">取消</button>
+          <button class="btn-primary" id="json-save">校验并保存</button>
+        </div>
+      </div>
+    </div>
+    <div id="css-modal" hidden>
+      <div class="json-box">
+        <div class="jb-head"><span id="css-title">插件样式</span><button class="mini-btn" id="css-close">✕</button></div>
+        <div class="jb-body">
+          <div class="jb-tip">自定义 CSS 仅注入该插件 iframe，叠加在全局样式之上；留空恢复插件默认皮肤。</div>
+          <textarea id="css-editor" spellcheck="false" placeholder="例如：body { background: #22242c; border-radius: 8px; }"></textarea>
+        </div>
+        <div class="jb-foot">
+          <button class="mini-btn" id="css-clear">清空</button>
+          <button class="mini-btn" id="css-cancel">取消</button>
+          <button class="btn-primary" id="css-save">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="dock.js?v=60"></script>
+  <script src="settings.js?v=52"></script>
+  <script>window.TBP_BOOTSTRAP && window.TBP_BOOTSTRAP();</script>
+</body>
+</html>

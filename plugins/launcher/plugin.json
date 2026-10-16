@@ -1,0 +1,15 @@
+{
+  "id": "builtin.launcher",
+  "name": "快捷启动",
+  "version": "1.0.0",
+  "author": "TaskBar Plus",
+  "description": "自定义应用/网站/文件夹快捷图标，点击即开，面板集中管理",
+  "permissions": ["shell"],
+  "width": { "min": 120, "max": 400, "default": 200 },
+  "config": {
+    "items": [
+      { "name": "记事本", "path": "C:\\Windows\\notepad.exe" },
+      { "name": "Bing", "path": "https://www.bing.com" }
+    ]
+  }
+}

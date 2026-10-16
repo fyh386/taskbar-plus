@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { background:transparent; font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+  body { display:flex; flex-direction:column; justify-content:flex-end; height:100vh; overflow:hidden; }
+  #strip { height:40px; display:flex; align-items:center; gap:7px; padding:0 10px; cursor:pointer;
+    overflow:hidden; white-space:nowrap; flex-shrink:0;
+    background:#2b2c33; border:1px solid #41424d; border-radius:7px; }
+  #strip .ic { color:#4db8ff; display:flex; flex-shrink:0; }
+  #strip .n { font-size:13px; font-weight:600; color:#bfe6ff; font-family:Consolas,monospace; }
+  #strip .lb { font-size:11px; color:#9a9ba6; overflow:hidden; text-overflow:ellipsis; }
+  #strip.on { border-color:#4db8ff; }
+  #panel { display:none; background:#1e1f24; border:1px solid #3a3b45; border-radius:10px;
+    margin:4px 4px 6px; padding:12px; color:#d5d6de; font-size:12px; width:380px; flex-shrink:0;
+    max-height:400px; overflow-y:auto; scrollbar-width:none; }
+  #panel::-webkit-scrollbar { display:none; }
+  #panel.open { display:block; }
+  .tt { font-size:11px; color:#8ab8ff; margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+  .rw { display:flex; gap:6px; margin-bottom:8px; }
+  .rw button { height:26px; padding:0 12px; border:1px solid #3a3b45; border-radius:6px; background:#141519;
+    color:#9ab8e8; font-size:11.5px; cursor:pointer; }
+  .rw button:hover { border-color:#4c8dff; color:#fff; }
+  #msg { font-size:11px; min-height:15px; margin-bottom:6px; }
+  #msg.err { color:#f85149; }
+  table { width:100%; border-collapse:collapse; font-size:11px; }
+  td,th { text-align:left; padding:4px 5px; border-bottom:1px solid #23242a; }
+  th { color:#6a6b76; font-weight:600; font-size:10.5px; }
+  td { color:#c9cad4; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; }
+  .dot.up { background:#6ee7a0; box-shadow:0 0 5px #6ee7a0; }
+  .dot.down { background:#f85149; }
+  .dot.paused { background:#f6a821; }
+  .nm { max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .img { max-width:100px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#8a8b96; }
+  .mini { height:20px; padding:0 8px; border:1px solid #2c3a4d; border-radius:5px; background:transparent;
+    color:#8ab8ff; font-size:10.5px; cursor:pointer; margin-right:4px; }
+  .mini:hover { border-color:#4c8dff; color:#fff; }
+  #logs { display:none; margin-top:8px; background:#141519; border:1px solid #2c2d34; border-radius:6px;
+    padding:8px; font-family:Consolas,monospace; font-size:10.5px; white-space:pre-wrap; word-break:break-all;
+    max-height:150px; overflow-y:auto; color:#a9d18b; line-height:1.5; scrollbar-width:none; }
+  #logs::-webkit-scrollbar { display:none; }
+  #logs .lt { color:#6a6b76; }
+  .hint { font-size:10.5px; color:#6a6b76; line-height:1.7; margin-top:9px; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <div class="tt"><span id="p-stat">容器</span><span style="flex:1"></span><span id="p-time" style="color:#6a6b76;font-size:10.5px"></span></div>
+    <div class="rw"><button id="b-refresh">刷新</button><button id="b-logs-close" style="display:none">关闭日志</button></div>
+    <div id="msg"></div>
+    <div id="cl"></div>
+    <div id="logs"></div>
+    <div class="hint">通过 Docker Desktop 命名管道通信，无需暴露 TCP 端口。需要 Docker Desktop 已安装并启动。</div>
+  </div>
+  <div id="strip" title="Docker 容器">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/><rect x="3" y="3" width="18" height="18" rx="3"/></svg></span>
+    <span class="n" id="s-n">--</span>
+    <span class="lb" id="s-lb">Docker</span>
+  </div>
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  const strip = $('strip'), panel = $('panel');
+  let expanded = false;
+  let poll = null;
+
+  function esc(s) { return String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  function dotCls(st) {
+    if (st === 'running') return 'up';
+    if (st === 'exited' || st === 'dead') return 'down';
+    return 'paused';
+  }
+
+  async function refresh(silent) {
+    try {
+      const r = await tbp.call('docker.list');
+      const cs = r.containers || [];
+      const up = cs.filter(c => c.running).length;
+      $('s-n').textContent = up + '/' + cs.length;
+      $('s-lb').textContent = 'Docker';
+      strip.classList.toggle('on', cs.length > 0);
+      $('p-stat').textContent = '容器 ' + up + ' 运行 / ' + cs.length + ' 总数';
+      $('p-time').textContent = new Date().toTimeString().slice(0, 8) + ' 更新';
+      $('msg').textContent = '';
+      $('cl').innerHTML = cs.length
+        ? '<table><tr><th></th><th>名称</th><th>镜像</th><th>状态</th><th>操作</th></tr>' +
+          cs.map(c => '<tr>' +
+            '<td><span class="dot ' + dotCls(c.state) + '"></span></td>' +
+            '<td class="nm" title="' + esc(c.name) + '">' + esc(c.name) + '</td>' +
+            '<td class="img" title="' + esc(c.image) + '">' + esc(c.image) + '</td>' +
+            '<td class="nm" title="' + esc(c.status) + '">' + esc(c.status) + '</td>' +
+            '<td><button class="mini" data-act="restart" data-id="' + c.id + '">重启</button>' +
+            '<button class="mini" data-act="logs" data-id="' + c.id + '">日志</button></td></tr>').join('') +
+          '</table>'
+        : '<div style="color:#5a5b66;padding:8px">没有容器</div>';
+      if (!silent) $('msg').className = '';
+    } catch (e) {
+      $('s-n').textContent = '--';
+      $('s-lb').textContent = '未连接';
+      const m = $('msg');
+      m.textContent = e.message || String(e);
+      m.className = 'err';
+      if (expanded) $('cl').innerHTML = '';
+    }
+  }
+
+  function startPoll() {
+    stopPoll();
+    poll = setInterval(() => refresh(true), 5000);
+  }
+  function stopPoll() { if (poll) { clearInterval(poll); poll = null; } }
+
+  strip.onclick = async () => {
+    expanded = !expanded;
+    panel.classList.toggle('open', expanded);
+    await tbp.call(expanded ? 'dock.expand' : 'dock.collapse', { height: 400 });
+    if (expanded) { await refresh(); startPoll(); }
+    else { stopPoll(); hideLogs(); }
+  };
+  tbp.on('dock.collapsed', () => { expanded = false; panel.classList.remove('open'); stopPoll(); hideLogs(); });
+
+  function hideLogs() {
+    $('logs').style.display = 'none';
+    $('logs').innerHTML = '';
+    $('b-logs-close').style.display = 'none';
+  }
+
+  $('b-refresh').onclick = () => refresh();
+  $('b-logs-close').onclick = hideLogs;
+
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.mini');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    if (btn.dataset.act === 'restart') {
+      if (!confirm('重启容器 ' + id + '？')) return;
+      try {
+        await tbp.call('docker.restart', { id });
+        await refresh(true);
+      } catch (err) {
+        alert('重启失败：' + (err.message || err));
+      }
+    } else {
+      btn.textContent = '…';
+      try {
+        const r = await tbp.call('docker.logs', { id });
+        $('logs').style.display = 'block';
+        $('b-logs-close').style.display = '';
+        $('logs').innerHTML = '<div class="lt">--- ' + esc(id) + ' 最近 200 行 ---</div>' + esc(r.logs || '（无日志）');
+        $('logs').scrollTop = $('logs').scrollHeight;
+      } catch (err) {
+        alert('读取日志失败：' + (err.message || err));
+      }
+      btn.textContent = '日志';
+    }
+  });
+
+  refresh(true);
+  tbp.ready();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "id": "builtin.everything-search",
+  "name": "文件搜索",
+  "version": "1.0.0",
+  "author": "TaskBar Plus",
+  "description": "基于 Everything 的本地文件秒搜（需本地安装 Everything 并开启 HTTP 服务器）",
+  "permissions": ["network", "shell"],
+  "width": { "min": 130, "max": 300, "default": 170 },
+  "config": {
+    "baseUrl": "http://127.0.0.1",
+    "port": 80
+  }
+}

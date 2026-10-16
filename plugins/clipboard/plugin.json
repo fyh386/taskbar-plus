@@ -1,0 +1,10 @@
+{
+  "id": "builtin.clipboard",
+  "name": "剪贴板历史",
+  "version": "1.0.0",
+  "author": "TaskBar Plus",
+  "description": "自动记录复制的文本历史，点击可重新复制",
+  "permissions": ["clipboard"],
+  "width": { "min": 50, "max": 100, "default": 64 },
+  "config": {}
+}

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { background:transparent; font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+  body { display:flex; flex-direction:column; justify-content:flex-end; height:100vh; overflow:hidden; }
+  #strip { height:40px; display:flex; align-items:center; gap:7px; padding:0 10px; cursor:pointer;
+    overflow:hidden; white-space:nowrap; flex-shrink:0;
+    background:#2b2c33; border:1px solid #41424d; border-radius:7px; }
+  #strip .nm { font-size:11.5px; color:#c8cad4; overflow:hidden; text-overflow:ellipsis; }
+  #strip .pr { font-size:12px; font-family:Consolas,monospace; font-weight:600; }
+  .up { color:#f85149 !important; } .down { color:#3fb950 !important; }
+  #panel { display:none; background:#1e1f24; border:1px solid #3a3b45; border-radius:10px;
+    margin:4px 4px 6px; color:#d5d6de; font-size:12px; width:280px;
+    flex-direction:column; overflow:hidden; flex-shrink:0; }
+  #panel.open { display:flex; }
+  .hd { display:flex; align-items:center; gap:6px; padding:8px 10px; border-bottom:1px solid #2c2d34; flex-shrink:0; }
+  .hd button { height:24px; padding:0 8px; border:1px solid #3a3b45; border-radius:6px; background:#141519;
+    color:#9ab8e8; font-size:11px; cursor:pointer; }
+  .hd button:hover { border-color:#4c8dff; color:#fff; }
+  #list { flex:1; overflow-y:auto; padding:4px 6px; }
+  #list::-webkit-scrollbar { width:0; height:0; }
+  .rw { display:flex; align-items:center; gap:6px; padding:6px 7px; border-radius:6px; cursor:pointer; }
+  .rw:hover { background:#26272e; }
+  .rw .n { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11.5px; }
+  .rw .n small { color:#6a6b76; margin-left:4px; font-family:Consolas,monospace; }
+  .rw .p { font-family:Consolas,monospace; font-size:12px; font-weight:600; }
+  .rw .c { font-family:Consolas,monospace; font-size:10.5px; width:56px; text-align:right; }
+  .rw .x { visibility:hidden; color:#6a6b76; font-size:11px; padding:0 3px; }
+  .rw:hover .x { visibility:visible; }
+  .rw .x:hover { color:#f85149; }
+  #cfg { display:none; flex-direction:column; gap:7px; padding:10px; border-bottom:1px solid #2c2d34; flex-shrink:0; }
+  #cfg.open { display:flex; }
+  #cfg textarea { height:64px; background:#141519; border:1px solid #2c2d34; border-radius:6px;
+    color:#b6c6e2; font-family:Consolas,monospace; font-size:11px; padding:8px; outline:none; resize:none; }
+  #cfg .rw2 { display:flex; gap:7px; align-items:center; font-size:11px; color:#9a9ba6; }
+  #cfg input { width:64px; height:24px; background:#141519; border:1px solid #2c2d34; border-radius:6px;
+    color:#e6e7ec; font-size:11.5px; padding:0 8px; outline:none; }
+  #cfg button { height:24px; padding:0 10px; border:1px solid #3a3b45; border-radius:6px; background:#141519;
+    color:#9ab8e8; font-size:11px; cursor:pointer; }
+  #empty { color:#4a4b55; font-size:11px; text-align:center; padding:16px 0; }
+  .tip { font-size:10px; color:#6a6b76; padding:6px 10px; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <div class="hd">
+      <button id="b-refresh">⟳</button>
+      <button id="b-cfg">⚙ 自选</button>
+      <span style="margin-left:auto;font-size:10px;color:#6a6b76" id="p-time"></span>
+    </div>
+    <div id="cfg">
+      <textarea id="c-syms" spellcheck="false" placeholder="每行一个代码：600519 / sz000001 / 美股AAPL"></textarea>
+      <div class="rw2">轮询(秒) <input id="c-interval" type="number" min="5">
+        <button id="c-save">保存</button><button id="c-cancel">取消</button></div>
+    </div>
+    <div id="list"></div>
+    <div id="empty" hidden>暂无自选股，点 ⚙ 添加</div>
+    <div class="tip">代码规则：6 开头=沪市 sh，0/3 开头=深市 sz，4/8 开头=北交所 bj，字母=美股。点击行打开行情页。</div>
+  </div>
+  <div id="strip" title="点击查看自选股">
+    <span style="color:#f85149;flex-shrink:0;display:flex" id="s-trend"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg></span>
+    <span class="nm" id="s-nm">股票</span>
+    <span class="pr" id="s-pr">--</span>
+  </div>
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  const strip = $('strip'), panel = $('panel');
+  let expanded = false;
+  let cfg = await tbp.config();
+  let quotes = {};   // code -> {name, price, pct}
+  let order = [];
+  let timer = null, cyc = 0;
+
+  function norm(code) {
+    code = (code || '').trim().toLowerCase();
+    if (!code) return '';
+    if (/^(sh|sz|bj)/.test(code)) return code;
+    if (/^\d{6}$/.test(code)) return (code[0] === '6' ? 'sh' : (code[0] === '4' || code[0] === '8' ? 'bj' : 'sz')) + code;
+    if (/^[a-z.]+$/.test(code)) return 'us' + code.toUpperCase(); // 腾讯 us 前缀：usAAPL.OQ? 用 us+代码
+    return code;
+  }
+  function symbols() { return (Array.isArray(cfg.symbols) ? cfg.symbols : []).map(norm).filter(Boolean); }
+
+  async function poll() {
+    const syms = symbols();
+    if (!syms.length) { $('s-nm').textContent = '股票'; return; }
+    // 腾讯行情接口：qt.gtimg.cn/q=sh600519,usAAPL.OQ
+    const q = syms.map(s => s.startsWith('us') ? 'us' + s.slice(2).toUpperCase() + '.OQ' : s).join(',');
+    try {
+      const r = await tbp.call('http.request', { method: 'GET', url: 'https://qt.gtimg.cn/q=' + q, maxBytes: 256 * 1024 });
+      const txt = r.body || '';
+      order = [];
+      for (const m of txt.matchAll(/v_([a-z0-9.]+)="([^"]*)"/gi)) {
+        const code = m[1];
+        const f = m[2].split('~');
+        if (f.length < 33) continue;
+        const name = f[1], price = +f[3], pct = +f[32];
+        if (!name || !isFinite(price)) continue;
+        quotes[code] = { name, price, pct: isFinite(pct) ? pct : 0 };
+        order.push(code);
+      }
+      renderPanel();
+      cycle();
+      $('p-time').textContent = new Date().toTimeString().slice(0, 8) + ' 更新';
+    } catch (e) {}
+  }
+
+  function fmt(code) {
+    const q = quotes[code];
+    if (!q) return null;
+    return { code, name: q.name, price: q.price.toFixed(2), pct: (q.pct >= 0 ? '+' : '') + q.pct.toFixed(2) + '%', cls: q.pct >= 0 ? 'up' : 'down' };
+  }
+
+  function cycle() {
+    if (!order.length || expanded) return;
+    cyc = (cyc + 1) % order.length;
+    const f = fmt(order[cyc]);
+    if (!f) return;
+    $('s-nm').textContent = f.name;
+    const pr = $('s-pr');
+    pr.textContent = f.price + ' ' + f.pct;
+    pr.className = 'pr ' + f.cls;
+  }
+
+  function renderPanel() {
+    const box = $('list');
+    box.innerHTML = '';
+    $('empty').hidden = order.length > 0;
+    for (const code of order) {
+      const f = fmt(code);
+      if (!f) continue;
+      const d = document.createElement('div');
+      d.className = 'rw';
+      d.innerHTML = '<span class="n">' + f.name + '<small>' + code + '</small></span>' +
+        '<span class="p ' + f.cls + '">' + f.price + '</span>' +
+        '<span class="c ' + f.cls + '">' + f.pct + '</span>' +
+        '<span class="x" title="移除">✕</span>';
+      d.onclick = (e) => {
+        if (e.target.classList.contains('x')) {
+          cfg.symbols = symbols().filter(s => s !== code);
+          delete quotes[code];
+          order = order.filter(c => c !== code);
+          tbp.saveConfig({ symbols: cfg.symbols });
+          renderPanel();
+          return;
+        }
+        const t = code.startsWith('us') ? 'https://gu.qq.com/' + code.slice(2).toUpperCase() + '.OQ'
+          : 'https://gu.qq.com/' + code;
+        tbp.call('shell.open', { url: t });
+      };
+      box.appendChild(d);
+    }
+  }
+
+  function schedule() {
+    if (timer) clearInterval(timer);
+    timer = setInterval(poll, Math.max(5, +(cfg.intervalSec || 15)) * 1000);
+  }
+
+  strip.onclick = async () => {
+    expanded = !expanded;
+    panel.classList.toggle('open', expanded);
+    $('cfg').classList.remove('open');
+    await tbp.call(expanded ? 'dock.expand' : 'dock.collapse', { height: 380 });
+    if (expanded) renderPanel();
+  };
+  tbp.on('dock.collapsed', () => { expanded = false; panel.classList.remove('open'); });
+
+  $('b-refresh').onclick = poll;
+  $('b-cfg').onclick = () => {
+    const c = $('cfg');
+    c.classList.toggle('open');
+    if (c.classList.contains('open')) {
+      $('c-syms').value = symbols().join('\n');
+      $('c-interval').value = cfg.intervalSec || 15;
+    }
+  };
+  $('c-cancel').onclick = () => $('cfg').classList.remove('open');
+  $('c-save').onclick = async () => {
+    cfg.symbols = $('c-syms').value.split('\n').map(norm).filter(Boolean);
+    cfg.intervalSec = Math.max(5, +$('c-interval').value || 15);
+    try { await tbp.saveConfig(cfg); } catch (e) {}
+    $('cfg').classList.remove('open');
+    schedule(); poll();
+  };
+
+  schedule();
+  setTimeout(poll, 800);
+  setInterval(cycle, 4000);
+  tbp.ready();
+})();
+</script>
+</body>
+</html>

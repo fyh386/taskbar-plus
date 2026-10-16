@@ -1,0 +1,18 @@
+{
+  "name": "taskbar-plus",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TaskBar Plus - 可插拔的 Windows 任务栏插件工具",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "settings": "node scripts/open-settings.js",
+    "test": "npm run test:rust && npm run test:contract && npm run test:smoke",
+    "test:rust": "powershell -ExecutionPolicy Bypass -File tests/rust-test.ps1",
+    "test:contract": "node tests/contract.test.js",
+    "test:smoke": "powershell -ExecutionPolicy Bypass -File tests/smoke.ps1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.5.0"
+  }
+}

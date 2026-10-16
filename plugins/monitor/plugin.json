@@ -1,0 +1,14 @@
+{
+  "id": "builtin.monitor",
+  "name": "系统监控",
+  "version": "1.0.0",
+  "author": "TaskBar Plus",
+  "description": "CPU / 内存 / 网络占用迷你曲线，点击展开详情",
+  "permissions": [],
+  "width": { "min": 110, "max": 320, "default": 196 },
+  "config": {
+    "show": { "cpu": true, "mem": true, "net": true },
+    "detail": { "showDisks": true },
+    "colors": { "cpu": "#f6a821", "mem": "#4c8dff", "net": "#3fb950" }
+  }
+}

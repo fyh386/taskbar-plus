@@ -1,0 +1,13 @@
+{
+  "id": "builtin.stock-watch",
+  "name": "股票盯盘",
+  "version": "1.0.0",
+  "author": "TaskBar Plus",
+  "description": "自选股盯盘：实时行情轮询，涨红跌绿，点击查看详情",
+  "permissions": ["network", "shell"],
+  "width": { "min": 140, "max": 320, "default": 190 },
+  "config": {
+    "symbols": ["sh600519", "sz000001"],
+    "intervalSec": 15
+  }
+}

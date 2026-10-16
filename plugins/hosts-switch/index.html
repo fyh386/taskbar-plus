@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { background:transparent; font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+  body { display:flex; flex-direction:column; justify-content:flex-end; height:100vh; overflow:hidden; }
+  #strip { height:40px; display:flex; align-items:center; gap:7px; padding:0 10px; cursor:pointer;
+    overflow:hidden; white-space:nowrap; flex-shrink:0;
+    background:#2b2c33; border:1px solid #41424d; border-radius:7px; }
+  #strip .ic { color:#6ee7a0; display:flex; flex-shrink:0; }
+  #strip .lb { font-size:12px; color:#9a9ba6; overflow:hidden; text-overflow:ellipsis; }
+  #strip.dirty .lb { color:#f6a821; }
+  #panel { display:none; background:#1e1f24; border:1px solid #3a3b45; border-radius:10px;
+    margin:4px 4px 6px; padding:12px; color:#d5d6de; font-size:12px; width:440px; flex-shrink:0;
+    max-height:420px; overflow-y:auto; scrollbar-width:none; }
+  #panel::-webkit-scrollbar { display:none; }
+  #panel.open { display:block; }
+  .tt { font-size:11px; color:#8ab8ff; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+  .tt .path { color:#6a6b76; font-size:10px; overflow:hidden; text-overflow:ellipsis; }
+  .rw { display:flex; gap:6px; margin-bottom:7px; }
+  select { height:28px; background:#141519; border:1px solid #2c2d34; border-radius:6px; color:#e6e7ec;
+    font-size:11.5px; padding:0 6px; outline:none; max-width:150px; }
+  button { height:28px; padding:0 10px; border:1px solid #3a3b45; border-radius:6px; background:#141519;
+    color:#9ab8e8; font-size:11.5px; cursor:pointer; white-space:nowrap; }
+  button:hover { border-color:#4c8dff; color:#fff; }
+  button.go { background:#1d3a2a; border-color:#2f6b4a; color:#6ee7a0; }
+  button.go:hover { border-color:#6ee7a0; }
+  button.del { color:#f85149; border-color:#5a3038; }
+  button.del:hover { border-color:#f85149; }
+  #h-ta { width:100%; height:190px; background:#141519; border:1px solid #2c2d34; border-radius:6px;
+    color:#cfe3cf; font-size:11.5px; padding:8px; outline:none; resize:none;
+    font-family:Consolas,monospace; line-height:1.5; }
+  #h-ta:focus { border-color:#4c8dff; }
+  #msg { font-size:11px; min-height:15px; margin:6px 0; }
+  #msg.err { color:#f85149; } #msg.ok { color:#6ee7a0; }
+  .hint { font-size:10.5px; color:#6a6b76; line-height:1.7; margin-top:8px; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <div class="tt">Hosts 编辑 / 切换<span class="path" id="p-path"></span></div>
+    <div class="rw">
+      <select id="p-sel"></select>
+      <button id="b-load">载入系统</button>
+      <button id="b-apply" class="go">保存并应用</button>
+    </div>
+    <div class="rw">
+      <input id="p-name" placeholder="方案名称，如：公司环境" style="flex:1;height:28px;background:#141519;border:1px solid #2c2d34;border-radius:6px;color:#e6e7ec;font-size:11.5px;padding:0 9px;outline:none">
+      <button id="b-save">存为方案</button>
+      <button id="b-del" class="del">删除方案</button>
+    </div>
+    <textarea id="h-ta" spellcheck="false" placeholder="127.0.0.1 localhost&#10;0.0.0.0 bad-site.com"></textarea>
+    <div id="msg"></div>
+    <div class="hint">「保存并应用」会以管理员权限写入 hosts（会弹一次 UAC 确认框）并自动刷新 DNS 缓存。建议先「载入系统」查看当前内容再修改。</div>
+  </div>
+  <div id="strip" title="Hosts 切换">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 9h12M6 13h8M6 17h5"/></svg></span>
+    <span class="lb" id="s-lb">Hosts</span>
+  </div>
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  const strip = $('strip'), panel = $('panel');
+  let expanded = false;
+  let cfg = await tbp.config();
+  if (!Array.isArray(cfg.profiles)) cfg.profiles = [];
+  let curName = '';
+
+  async function loadSystem() {
+    const m = $('msg');
+    m.textContent = '读取中…'; m.className = '';
+    try {
+      const r = await tbp.call('hosts.read');
+      $('h-ta').value = r.content || '';
+      $('p-path').textContent = r.path || '';
+      m.textContent = '已载入系统当前 hosts';
+      m.className = 'ok';
+    } catch (e) {
+      m.textContent = '读取失败：' + (e.message || e);
+      m.className = 'err';
+    }
+  }
+
+  function fillSel() {
+    const sel = $('p-sel');
+    sel.innerHTML = '<option value="">（选择方案）</option>' +
+      cfg.profiles.map((p, i) => '<option value="' + i + '"' + (p.name === curName ? ' selected' : '') + '>' +
+        String(p.name).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) + '</option>').join('');
+  }
+
+  strip.onclick = async () => {
+    expanded = !expanded;
+    panel.classList.toggle('open', expanded);
+    await tbp.call(expanded ? 'dock.expand' : 'dock.collapse', { height: 420 });
+    if (expanded) { fillSel(); if (!$('h-ta').value) loadSystem(); }
+  };
+  tbp.on('dock.collapsed', () => { expanded = false; panel.classList.remove('open'); });
+
+  $('p-sel').onchange = () => {
+    const i = $('p-sel').value;
+    if (i === '') return;
+    const p = cfg.profiles[+i];
+    if (!p) return;
+    $('h-ta').value = p.content || '';
+    $('p-name').value = p.name || '';
+    curName = p.name || '';
+    $('msg').textContent = '已载入方案「' + p.name + '」（尚未写入系统）';
+    $('msg').className = '';
+  };
+
+  $('b-load').onclick = loadSystem;
+
+  $('b-apply').onclick = async () => {
+    const content = $('h-ta').value;
+    const m = $('msg');
+    m.textContent = '写入中…（如弹出 UAC 请点「是」）';
+    m.className = '';
+    try {
+      const r = await tbp.call('hosts.apply', { content });
+      m.textContent = '已应用' + (r.elevated ? '（已提权）' : '') + '，DNS 缓存已刷新';
+      m.className = 'ok';
+      strip.classList.remove('dirty');
+    } catch (e) {
+      m.textContent = '应用失败：' + (e.message || e);
+      m.className = 'err';
+    }
+  };
+
+  $('b-save').onclick = async () => {
+    const name = $('p-name').value.trim();
+    if (!name) { $('msg').textContent = '请先输入方案名称'; $('msg').className = 'err'; return; }
+    const content = $('h-ta').value;
+    const i = cfg.profiles.findIndex(p => p.name === name);
+    if (i >= 0) cfg.profiles[i].content = content;
+    else cfg.profiles.push({ name, content });
+    curName = name;
+    try { await tbp.saveConfig(cfg); } catch (e) {}
+    fillSel();
+    $('msg').textContent = '方案「' + name + '」已保存';
+    $('msg').className = 'ok';
+  };
+
+  $('b-del').onclick = async () => {
+    const name = $('p-name').value.trim() || curName;
+    if (!name) return;
+    const i = cfg.profiles.findIndex(p => p.name === name);
+    if (i < 0) { $('msg').textContent = '方案不存在'; $('msg').className = 'err'; return; }
+    if (!confirm('删除方案「' + name + '」？（不影响系统 hosts）')) return;
+    cfg.profiles.splice(i, 1);
+    curName = '';
+    try { await tbp.saveConfig(cfg); } catch (e) {}
+    fillSel();
+    $('p-name').value = '';
+    $('msg').textContent = '已删除';
+    $('msg').className = 'ok';
+  };
+
+  $('h-ta').addEventListener('input', () => strip.classList.add('dirty'));
+  tbp.ready();
+})();
+</script>
+</body>
+</html>

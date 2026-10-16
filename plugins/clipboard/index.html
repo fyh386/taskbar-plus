@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { background:transparent; font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+  body { display:flex; flex-direction:column; justify-content:flex-end; height:100vh; overflow:hidden; }
+  #strip { height:40px; display:flex; align-items:center; justify-content:center; cursor:pointer;
+    position:relative; width:100%; max-width:64px; margin-left:auto;
+    background:#2b2c33; border:1px solid #41424d; border-radius:7px; }
+  #strip svg { width:18px; height:18px; stroke:#8a5cff; fill:none; stroke-width:1.7;
+    stroke-linecap:round; stroke-linejoin:round; }
+  #badge { position:absolute; top:2px; right:4px; min-width:14px; height:13px; border-radius:7px;
+    background:#4c8dff; color:#fff; font-size:8.5px; line-height:13px; text-align:center;
+    padding:0 3px; font-family:Consolas,monospace; }
+  #panel { display:none; background:#1e1f24; border:1px solid #3a3b45; border-radius:10px;
+    margin:0 4px 6px; padding:12px 14px; color:#d5d6de; font-size:12px; width:320px;
+    max-height:288px; overflow:auto; }
+  #panel.open { display:block; }
+  .hd { display:flex; align-items:center; margin-bottom:8px; font-size:11px; color:#6a6b76; }
+  .hd b { color:#d5d6de; font-weight:500; }
+  .hd .sp { flex:1; }
+  .mini { height:22px; padding:0 9px; border:1px solid #3a3b45; border-radius:5px; background:#141519;
+    color:#9a9ba6; font-size:10.5px; cursor:pointer; }
+  .mini:hover { color:#fff; border-color:#4c8dff; }
+  #list { max-height:200px; overflow:auto; }
+  .it { display:flex; gap:8px; padding:6px 8px; border-radius:6px; cursor:pointer; align-items:baseline; }
+  .it:hover { background:#33343d; }
+  .it.sel { background:rgba(76,141,255,.15); }
+  .it .t { font-size:10px; color:#6a6b76; font-family:Consolas,monospace; flex-shrink:0; }
+  .it .x { font-size:11.5px; color:#c9cad2; overflow:hidden; text-overflow:ellipsis;
+    white-space:nowrap; user-select:text; }
+  .empty { color:#4a4b55; font-size:11px; text-align:center; padding:16px 0; }
+  #tip { font-size:10px; color:#4a4b55; margin-top:8px; text-align:center; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <div class="hd">
+      <b>剪贴板历史</b><span class="sp"></span>
+      <button class="mini" id="clear">清空</button>
+    </div>
+    <div id="list"><div class="empty">复制一些文本后会自动出现在这里</div></div>
+    <div id="tip">点击条目重新复制 · 后台每 1s 自动检测</div>
+  </div>
+  <div id="strip" title="剪贴板历史">
+    <svg viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h4"/></svg>
+    <span id="badge">0</span>
+  </div>
+<script>
+(async () => {
+  const panel = document.getElementById('panel');
+  const list = document.getElementById('list');
+  const badge = document.getElementById('badge');
+  let expanded = false, items = [], copiedIdx = -1;
+
+  function fmt(ts) {
+    const d = new Date(ts * 1000);
+    const p = n => String(n).padStart(2, '0');
+    return p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  function render() {
+    badge.textContent = items.length;
+    if (!expanded) return;
+    if (!items.length) {
+      list.innerHTML = '<div class="empty">复制一些文本后会自动出现在这里</div>';
+      return;
+    }
+    list.innerHTML = '';
+    items.forEach((it, i) => {
+      const d = document.createElement('div');
+      d.className = 'it' + (i === copiedIdx ? ' sel' : '');
+      const t = document.createElement('span'); t.className = 't'; t.textContent = fmt(it.ts);
+      const x = document.createElement('span'); x.className = 'x'; x.textContent = it.text; x.title = it.text;
+      d.append(t, x);
+      d.onclick = async () => {
+        await tbp.call('clipboard.set', { text: it.text });
+        copiedIdx = i;
+        render();
+        setTimeout(() => { if (copiedIdx === i) { copiedIdx = -1; render(); } }, 1200);
+      };
+      list.appendChild(d);
+    });
+  }
+
+  async function refresh() {
+    items = await tbp.call('clipboard.history', { n: 30 });
+    render();
+  }
+
+  // 宿主剪贴板监视事件
+  tbp.on('clipboard', () => { refresh(); });
+
+  document.getElementById('clear').onclick = async (e) => {
+    e.stopPropagation();
+    await tbp.call('clipboard.clear');
+    copiedIdx = -1;
+    await refresh();
+  };
+
+  document.getElementById('strip').onclick = async () => {
+    expanded = !expanded;
+    panel.classList.toggle('open', expanded);
+    if (expanded) await refresh();
+    await tbp.call(expanded ? 'dock.expand' : 'dock.collapse', { height: 280 });
+  };
+  tbp.on('dock.collapsed', () => {
+    expanded = false;
+    panel.classList.remove('open');
+  });
+
+  await refresh();
+  tbp.ready();
+})();
+</script>
+</body>
+</html>

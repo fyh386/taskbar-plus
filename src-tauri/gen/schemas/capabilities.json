@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"dock 与 settings 窗口的默认权限","local":true,"windows":["dock","settings"],"permissions":["core:event:allow-listen","core:event:allow-unlisten"]}}

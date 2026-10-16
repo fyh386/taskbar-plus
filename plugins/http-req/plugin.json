@@ -1,0 +1,16 @@
+{
+  "id": "builtin.http-req",
+  "name": "HTTP 请求",
+  "version": "1.0.0",
+  "author": "TaskBar Plus",
+  "description": "类 Postman 的轻量 HTTP 调试：方法/请求头/请求体/响应查看",
+  "permissions": ["network"],
+  "width": { "min": 50, "max": 90, "default": 64 },
+  "config": {
+    "method": "GET",
+    "url": "",
+    "headersText": "",
+    "body": "",
+    "history": []
+  }
+}

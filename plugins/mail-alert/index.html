@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { background:transparent; font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+  body { display:flex; flex-direction:column; justify-content:flex-end; height:100vh; overflow:hidden; }
+  #strip { height:40px; display:flex; align-items:center; gap:7px; padding:0 10px; cursor:pointer;
+    overflow:hidden; white-space:nowrap; flex-shrink:0;
+    background:#2b2c33; border:1px solid #41424d; border-radius:7px; }
+  #strip .ic { color:#f6a821; display:flex; flex-shrink:0; }
+  #strip .n { font-size:13px; font-weight:600; color:#ffd479; font-family:Consolas,monospace; }
+  #strip .lb { font-size:11px; color:#9a9ba6; overflow:hidden; text-overflow:ellipsis; }
+  #strip.has { border-color:#f6a821; }
+  #strip.has .n { color:#ffb84d; }
+  #panel { display:none; background:#1e1f24; border:1px solid #3a3b45; border-radius:10px;
+    margin:4px 4px 6px; padding:12px; color:#d5d6de; font-size:12px; width:272px; flex-shrink:0; }
+  #panel.open { display:block; }
+  .tt { font-size:11px; color:#8ab8ff; margin-bottom:8px; }
+  #panel input { width:100%; height:28px; margin-bottom:7px; background:#141519; border:1px solid #2c2d34;
+    border-radius:6px; color:#e6e7ec; font-size:12px; padding:0 9px; outline:none; }
+  #panel input:focus { border-color:#4c8dff; }
+  .rw { display:flex; gap:7px; } .rw input { flex:1; }
+  #p-msg { font-size:11px; min-height:15px; margin:2px 0 6px; }
+  #p-msg.ok { color:#6ee7a0; } #p-msg.err { color:#f85149; }
+  #p-actions { display:flex; gap:7px; }
+  #p-actions button { flex:1; height:28px; border:1px solid #3a3b45; border-radius:6px; background:#141519;
+    color:#9ab8e8; font-size:11.5px; cursor:pointer; }
+  #p-actions button:hover { border-color:#4c8dff; color:#fff; }
+  .hint { font-size:10.5px; color:#6a6b76; line-height:1.7; margin-top:9px; }
+  #p-stat { display:flex; justify-content:space-between; font-size:11px; color:#9a9ba6; margin-top:9px;
+    padding-top:9px; border-top:1px solid #2c2d34; }
+  #p-stat b { color:#ffd479; font-family:Consolas,monospace; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <div class="tt">邮件账户（IMAP 授权码登录）</div>
+    <div class="rw">
+      <input id="p-host" placeholder="imap.qq.com">
+      <input id="p-port" placeholder="993" style="max-width:64px">
+    </div>
+    <input id="p-user" placeholder="邮箱账号 you@qq.com">
+    <input id="p-pass" type="password" placeholder="授权码（非登录密码）">
+    <div class="rw">
+      <input id="p-folder" placeholder="INBOX" style="max-width:110px">
+      <input id="p-interval" placeholder="轮询分钟数" style="max-width:110px">
+    </div>
+    <div id="p-msg"></div>
+    <div id="p-actions">
+      <button id="p-save">保存</button>
+      <button id="p-check">立即检查</button>
+      <button id="p-web">打开网页邮箱</button>
+    </div>
+    <div id="p-stat"><span>未读 <b id="p-unseen">--</b></span><span>共 <b id="p-total">--</b></span><span id="p-time"></span></div>
+    <div class="hint">QQ 邮箱：设置 → 账号 → 开启 IMAP 服务获取授权码；163/Gmail 同理。查询只读，不修改邮件状态。</div>
+  </div>
+  <div id="strip" title="点击设置邮件提醒">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span>
+    <span class="n" id="s-n">--</span>
+    <span class="lb" id="s-lb">邮件</span>
+  </div>
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  const strip = $('strip'), panel = $('panel');
+  let expanded = false;
+  let cfg = await tbp.config();
+  let timer = null;
+
+  function fill() {
+    $('p-host').value = cfg.host || '';
+    $('p-port').value = cfg.port || 993;
+    $('p-user').value = cfg.user || '';
+    $('p-pass').value = cfg.pass || '';
+    $('p-folder').value = cfg.folder || 'INBOX';
+    $('p-interval').value = cfg.intervalMin || 5;
+  }
+
+  async function check() {
+    if (!cfg.host || !cfg.user || !cfg.pass) { $('s-n').textContent = '--'; return; }
+    $('s-lb').textContent = '检查中…';
+    try {
+      const r = await tbp.call('mail.unread', {
+        host: cfg.host, port: +(cfg.port || 993), user: cfg.user, pass: cfg.pass, folder: cfg.folder || 'INBOX'
+      });
+      const n = r.unseen | 0;
+      $('s-n').textContent = n;
+      $('s-lb').textContent = cfg.user.split('@')[0];
+      strip.classList.toggle('has', n > 0);
+      $('p-unseen').textContent = n;
+      $('p-total').textContent = r.total;
+      $('p-time').textContent = new Date().toTimeString().slice(0, 5) + ' 已查';
+      const m = $('p-msg');
+      m.textContent = n > 0 ? ('有 ' + n + ' 封未读邮件') : '没有新邮件';
+      m.className = n > 0 ? 'ok' : '';
+    } catch (e) {
+      $('s-lb').textContent = '连接失败';
+      const m = $('p-msg');
+      m.textContent = '检查失败：' + (e.message || e);
+      m.className = 'err';
+    }
+  }
+
+  function schedule() {
+    if (timer) clearInterval(timer);
+    const min = Math.max(1, +(cfg.intervalMin || 5));
+    timer = setInterval(check, min * 60000);
+  }
+
+  strip.onclick = async () => {
+    expanded = !expanded;
+    panel.classList.toggle('open', expanded);
+    await tbp.call(expanded ? 'dock.expand' : 'dock.collapse', { height: 356 });
+    if (expanded) fill();
+  };
+  tbp.on('dock.collapsed', () => { expanded = false; panel.classList.remove('open'); });
+
+  $('p-save').onclick = async () => {
+    cfg = {
+      host: $('p-host').value.trim(), port: +$('p-port').value || 993,
+      user: $('p-user').value.trim(), pass: $('p-pass').value,
+      folder: $('p-folder').value.trim() || 'INBOX',
+      intervalMin: Math.max(1, +$('p-interval').value || 5)
+    };
+    try { await tbp.saveConfig(cfg); } catch (e) {}
+    $('p-msg').textContent = '已保存'; $('p-msg').className = 'ok';
+    schedule(); check();
+  };
+  $('p-check').onclick = check;
+  $('p-web').onclick = () => {
+    const h = (cfg.host || '').replace(/^imap\./, '');
+    if (h) tbp.call('shell.open', { url: 'https://mail.' + h.split('.').slice(-2).join('.') });
+  };
+
+  fill();
+  schedule();
+  setTimeout(check, 1200);
+  tbp.ready();
+})();
+</script>
+</body>
+</html>

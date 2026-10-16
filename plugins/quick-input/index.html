@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { background:transparent; font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+  body { display:flex; flex-direction:column; justify-content:flex-end; height:100vh; overflow:hidden; }
+  #strip { height:40px; display:flex; align-items:center; gap:6px; padding:0 8px 0 12px;
+    overflow:hidden; white-space:nowrap; flex-shrink:0;
+    background:#2b2c33; border:1px solid #41424d; border-radius:7px; }
+  #q { flex:1; min-width:0; height:28px; background:transparent; border:none; outline:none; color:#eee; font-size:13px; user-select:text; }
+  #q::placeholder { color:#5f6068; }
+  .btn { height:28px; padding:0 11px; border:none; border-radius:6px; font-size:12px; cursor:pointer; color:#fff; }
+  #btn-t { background:linear-gradient(135deg,#2f9e6e,#2b7a4b); }
+  #btn-a { background:linear-gradient(135deg,#8a5cff,#6a3fb5); }
+  .btn:hover { filter:brightness(1.2); }
+  #panel { display:none; background:#1e1f24; border:1px solid #3a3b45; border-radius:10px;
+    margin:0 4px 6px; padding:13px 15px; color:#d5d6de; width:430px; }
+  #panel.open { display:block; }
+  #src { color:#71727e; font-size:12px; margin-bottom:7px; word-break:break-all; user-select:text; }
+  #out { background:#141519; border:1px solid #2c2d34; border-radius:8px; padding:10px 12px;
+    font-size:13px; line-height:1.7; color:#8ab8ff; min-height:52px; max-height:150px; overflow:auto; user-select:text;
+    white-space:pre-wrap; word-break:break-word; }
+  /* AI 配置区 */
+  .ai-cfg { display:flex; gap:6px; margin-top:10px; align-items:center; flex-wrap:wrap; }
+  .ai-chip { padding:4px 11px; border-radius:12px; background:#33343d; font-size:11px; cursor:pointer;
+    border:1px solid transparent; color:#c9cad2; }
+  .ai-chip.on { background:linear-gradient(135deg,#8a5cff,#6a3fb5); color:#fff; }
+  #ai-key { flex:1; min-width:0; height:26px; background:#141519; border:1px solid #3a3b45; border-radius:6px;
+    color:#d5d6de; font-size:11.5px; padding:0 9px; outline:none; user-select:text; font-family:Consolas,monospace; }
+  #ai-key:focus { border-color:#8a5cff; }
+  #ai-save { height:26px; padding:0 12px; border:none; border-radius:6px; background:#2b7a4b;
+    color:#fff; font-size:11.5px; cursor:pointer; flex-shrink:0; }
+  #ai-save:hover { filter:brightness(1.2); }
+  #ai-model { font-size:10.5px; color:#6a6b76; font-family:Consolas,monospace; width:100%; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <div id="src"></div>
+    <div id="out">输入文字后按 Enter 翻译；配置 Key 后 Ctrl+Enter 直接问 AI。</div>
+    <div class="ai-cfg">
+      <span class="ai-chip" data-p="deepseek">DeepSeek</span>
+      <span class="ai-chip" data-p="kimi">Kimi</span>
+      <span class="ai-chip" data-p="custom">自定义</span>
+      <span class="ai-chip" id="ai-new" title="结束当前会话（已保存到文件），开启新会话">新会话</span>
+      <input id="ai-key" type="password" placeholder="API Key（仅保存在本地）">
+      <button id="ai-save">保存</button>
+      <span id="ai-model"></span>
+    </div>
+  </div>
+  <div id="strip">
+    <input id="q" placeholder="输入文字，Enter 翻译 · Ctrl+Enter 问 AI…">
+    <button class="btn" id="btn-t">翻译</button>
+    <button class="btn" id="btn-a">AI</button>
+  </div>
+<script>
+(async () => {
+  const cfg = await tbp.config();
+  const q = document.getElementById('q');
+  const panel = document.getElementById('panel');
+  const out = document.getElementById('out');
+  const src = document.getElementById('src');
+  let expanded = false;
+
+  // 对话历史（每轮问答后落盘到 exe 同级 ai-sessions/<会话ID>.json，一会话一文件）：
+  // 保留最近若干轮，随请求一起发送；失败的一轮不入历史，避免坏上下文污染后续问答。
+  let history = [];
+  const HISTORY_TURNS = 8; // 最多保留 8 轮问答（16 条消息）
+  // 会话 ID = 启动时间戳；点「新会话」换新 ID，即开启一个新文件
+  let sessionId = newSessionId();
+  function newSessionId() {
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    return 's' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate())
+      + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+  }
+  async function saveSession() {
+    try {
+      const ai = cfg.ai || {};
+      await tbp.call('fs.write', {
+        path: 'exe/ai-sessions/' + sessionId + '.json',
+        content: JSON.stringify({
+          session: sessionId,
+          provider: ai.provider || '',
+          model: ai.model || '',
+          savedAt: new Date().toISOString(),
+          turns: Math.floor(history.length / 2),
+          history: history
+        }, null, 2)
+      });
+      document.getElementById('ai-model').textContent =
+        (ai.model || '') + ' · 已存 ' + sessionId + '.json';
+    } catch (e) {
+      // 落盘失败不打扰对话，但在模型行提示原因（避免静默丢失）
+      document.getElementById('ai-model').textContent = '保存失败：' + (e.message || e);
+    }
+  }
+  function renderTranscript() {
+    if (!history.length) return;
+    const parts = [];
+    for (const m of history) {
+      parts.push((m.role === 'user' ? '你：' : 'AI：') + m.content);
+    }
+    out.textContent = parts.join('\n\n');
+    out.scrollTop = out.scrollHeight;
+  }
+  function clearHistory() {
+    history = [];
+    sessionId = newSessionId(); // 新会话 = 新文件
+    out.textContent = '已开始新会话。输入文字，Ctrl+Enter 问 AI。';
+  }
+
+  // AI 供应商预设（OpenAI 兼容接口，面板配置 Key 后直连，不再跳转网页）
+  // Kimi Code 套餐密钥只能用于 coding 专用端点（api.moonshot.cn 会返回 401）
+  const AI_PRESETS = {
+    deepseek: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+    kimi: { baseUrl: 'https://api.kimi.com/coding/v1', model: 'kimi-for-coding' },
+    custom: {}
+  };
+  cfg.ai = cfg.ai || {};
+  // 旧版本配置迁移：Kimi 预设曾指向 api.moonshot.cn / moonshot-v1-8k（该密钥体系
+  // 与 Kimi Code 套餐不通用，必 401）。已保存旧端点的，自动切换到 coding 端点。
+  if (cfg.ai.provider === 'kimi' && cfg.ai.baseUrl &&
+      cfg.ai.baseUrl.indexOf('moonshot') !== -1) {
+    cfg.ai.baseUrl = AI_PRESETS.kimi.baseUrl;
+    cfg.ai.model = AI_PRESETS.kimi.model;
+    tbp.saveConfig(cfg);
+  }
+  const keyIn = document.getElementById('ai-key');
+  const modelLabel = document.getElementById('ai-model');
+
+  function refreshAiUI() {
+    const p = cfg.ai.provider || 'deepseek';
+    document.querySelectorAll('.ai-chip').forEach(c =>
+      c.classList.toggle('on', c.dataset.p === p));
+    keyIn.value = cfg.ai.apiKey || '';
+    const preset = AI_PRESETS[p];
+    modelLabel.textContent = preset && preset.model
+      ? '模型：' + preset.model
+      : '自定义：' + (cfg.ai.baseUrl || '未设置') + ' / ' + (cfg.ai.model || '未设置');
+  }
+  refreshAiUI();
+
+  document.querySelectorAll('.ai-chip[data-p]').forEach(c => {
+    c.onclick = async () => {
+      cfg.ai.provider = c.dataset.p;
+      const preset = AI_PRESETS[c.dataset.p];
+      if (preset.baseUrl) {
+        cfg.ai.baseUrl = preset.baseUrl;
+        cfg.ai.model = preset.model;
+      }
+      await tbp.saveConfig(cfg);
+      clearHistory(); // 换了供应商/模型，旧上下文不再适用
+      refreshAiUI();
+    };
+  });
+  document.getElementById('ai-new').onclick = clearHistory;
+  document.getElementById('ai-save').onclick = async () => {
+    cfg.ai.apiKey = keyIn.value.trim();
+    await tbp.saveConfig(cfg);
+    const btn = document.getElementById('ai-save');
+    btn.textContent = '已保存';
+    setTimeout(() => { btn.textContent = '保存'; }, 1500);
+  };
+
+  async function expand() {
+    if (expanded) return;
+    expanded = true; panel.classList.add('open');
+    await tbp.call('dock.expand', { height: 246 });
+  }
+  async function collapse() {
+    if (!expanded) return;
+    expanded = false; panel.classList.remove('open');
+    await tbp.call('dock.collapse');
+  }
+  // 宿主因切换其他插件而收起本弹层时，同步本地状态
+  tbp.on('dock.collapsed', () => {
+    expanded = false;
+    panel.classList.remove('open');
+  });
+
+  async function translate() {
+    const text = q.value.trim();
+    if (!text) return;
+    await expand();
+    src.textContent = text;
+    out.textContent = '翻译中…';
+    const t = cfg.translate || {};
+    const sl = t.sourceLang || 'auto';
+    let tl = t.targetLang || 'zh-CN';
+    // 自动方向：sourceLang=auto 时按输入内容判断（中文→英，其他→中）
+    if (sl === 'auto') {
+      const cjk = /[\u4e00-\u9fff]/.test(text);
+      if (cjk && tl.startsWith('zh')) tl = 'en';
+      else if (!cjk && tl === 'en') tl = 'zh-CN';
+    }
+    // 引擎链：auto = 后端 mymemory/google 并发竞速（取最快）；失败后 translators
+    const chain = t.provider && t.provider !== 'auto'
+      ? [t.provider, 'auto', 'translators']
+      : ['auto', 'translators'];
+    let lastErr = '';
+    for (const p of chain) {
+      try {
+        const r = await tbp.call('translate.text', { text, sl, tl, provider: p });
+        if (r.ok && r.text) {
+          out.textContent = r.text;
+          return;
+        }
+        lastErr = (r.error || '无结果') + '（' + p + '）';
+      } catch (e) {
+        lastErr = String(e.message || e) + '（' + p + '）';
+      }
+    }
+    out.textContent = '翻译失败：' + lastErr +
+      '\n可在设置 → 快捷输入 → 配置中调整 translate.provider（auto/mymemory/google/translators）';
+  }
+
+  async function askAI() {
+    const text = q.value.trim();
+    await expand();
+    const ai = cfg.ai || {};
+    if (!text) { out.textContent = '先输入要提问的内容。'; return; }
+    if (!ai.apiKey) {
+      out.textContent = '请先在下方填入 API Key 并保存（支持 DeepSeek / Kimi / 自定义 OpenAI 兼容接口）。';
+      keyIn.focus();
+      return;
+    }
+    src.textContent = '问 ' + (ai.provider || 'AI') + '：' + text;
+    history.push({ role: 'user', content: text });
+    renderTranscript();
+    out.textContent += '\n\n思考中…';
+    try {
+      const resp = await tbp.call('http.post', {
+        url: (ai.baseUrl || 'https://api.deepseek.com/v1').replace(/\/$/, '') + '/chat/completions',
+        headers: { Authorization: 'Bearer ' + ai.apiKey },
+        body: JSON.stringify({
+          model: ai.model || 'deepseek-chat',
+          messages: [
+            { role: 'system', content: '你是任务栏快捷助手，回答要简洁准确。' },
+            // 只带最近的若干轮，控制请求体积
+            ...history.slice(-HISTORY_TURNS * 2)
+          ]
+        })
+      });
+      if (resp.status !== 200) {
+        throw new Error('HTTP ' + resp.status + '：' + resp.body.slice(0, 200));
+      }
+      const data = JSON.parse(resp.body);
+      const answer = data.choices && data.choices[0] && data.choices[0].message
+        && data.choices[0].message.content;
+      if (!answer) throw new Error('（空响应）');
+      history.push({ role: 'assistant', content: answer.trim() });
+      renderTranscript();
+      saveSession(); // 每轮落盘：ai-sessions/<会话ID>.json
+    } catch (e) {
+      history.pop(); // 失败提问不入历史
+      renderTranscript();
+      out.textContent += '\n\nAI 请求失败：' + e.message;
+      out.scrollTop = out.scrollHeight;
+    }
+  }
+
+  q.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); if (e.ctrlKey) askAI(); else translate(); }
+  });
+  document.getElementById('btn-t').onclick = translate;
+  document.getElementById('btn-a').onclick = askAI;
+  tbp.ready();
+})();
+</script>
+</body>
+</html>

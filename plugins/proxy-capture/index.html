@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { background:transparent; font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+  body { display:flex; flex-direction:column; justify-content:flex-end; height:100vh; overflow:hidden; }
+  #strip { height:40px; display:flex; align-items:center; gap:7px; padding:0 10px; cursor:pointer;
+    overflow:hidden; white-space:nowrap; flex-shrink:0;
+    background:#2b2c33; border:1px solid #41424d; border-radius:7px; }
+  #strip .ic { color:#8ab8ff; display:flex; flex-shrink:0; }
+  #strip .n { font-size:13px; font-weight:600; color:#cfe1ff; font-family:Consolas,monospace; }
+  #strip .lb { font-size:11px; color:#9a9ba6; overflow:hidden; text-overflow:ellipsis; }
+  #strip.on { border-color:#4c8dff; }
+  #strip.on .ic { color:#4c8dff; }
+  #strip.on .lb { color:#8ab8ff; }
+
+  #panel { display:none; background:#1e1f24; border:1px solid #3a3b45; border-radius:10px;
+    margin:4px 4px 6px; padding:12px; color:#d5d6de; font-size:12px; width:540px; flex-shrink:0;
+    max-height:560px; overflow:hidden; }
+  #panel.open { display:block; }
+  .tt { font-size:11px; color:#8ab8ff; margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+  .tt .dot { width:8px; height:8px; border-radius:50%; background:#6a6b76; }
+  .tt .dot.on { background:#6ee7a0; box-shadow:0 0 6px #6ee7a0; }
+
+  .tb { display:flex; gap:6px; margin-bottom:8px; }
+  .tb button { height:26px; padding:0 10px; border:1px solid #3a3b45; border-radius:6px; background:#141519;
+    color:#9ab8e8; font-size:11.5px; cursor:pointer; white-space:nowrap; }
+  .tb button:hover { border-color:#4c8dff; color:#fff; }
+  .tb button.warn { color:#f6a821; border-color:#5a4a2c; }
+  .tb button.warn:hover { border-color:#f6a821; }
+  #f-in { flex:1; height:26px; background:#141519; border:1px solid #2c2d34; border-radius:6px;
+    color:#e6e7ec; font-size:11.5px; padding:0 9px; outline:none; min-width:0; }
+  #f-in:focus { border-color:#4c8dff; }
+  .cnt { font-size:11px; color:#6a6b76; margin-bottom:6px; }
+  .cnt b { color:#9ab8e8; font-family:Consolas,monospace; }
+
+  #list { border:1px solid #2c2d34; border-radius:6px; overflow:hidden; margin-bottom:8px;
+    max-height:240px; overflow-y:auto; scrollbar-width:none; }
+  #list::-webkit-scrollbar { display:none; }
+  .row { display:flex; align-items:center; gap:7px; padding:5px 8px; cursor:pointer;
+    border-bottom:1px solid #23242a; font-size:11.5px; }
+  .row:last-child { border-bottom:none; }
+  .row:hover { background:#26272e; }
+  .row.sel { background:#2a3547; }
+  .row .m { font-family:Consolas,monospace; font-weight:700; width:44px; flex-shrink:0; font-size:11px; }
+  .row .s { font-family:Consolas,monospace; width:34px; flex-shrink:0; text-align:right; font-size:11px; }
+  .row .u { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#c9cad4; }
+  .row .t { color:#6a6b76; font-family:Consolas,monospace; font-size:10.5px; flex-shrink:0; }
+  .m.GET { color:#6ee7a0; } .m.POST { color:#f6a821; } .m.PUT { color:#8ab8ff; }
+  .m.DELETE { color:#f85149; } .m.HEAD,.m.OPTIONS,.m.PATCH { color:#c792ea; }
+  .s.ok { color:#6ee7a0; } .s.red { color:#f85149; } .s.warn { color:#f6a821; }
+
+  #detail { border:1px solid #2c2d34; border-radius:6px; padding:8px; display:none;
+    max-height:280px; overflow-y:auto; scrollbar-width:none; margin-bottom:8px; }
+  #detail::-webkit-scrollbar { display:none; }
+  #detail.show { display:block; }
+  .tabs { display:flex; gap:4px; margin-bottom:7px; flex-wrap:wrap; }
+  .tabs button { height:22px; padding:0 9px; border:1px solid #2c2d34; border-radius:5px; background:transparent;
+    color:#8a8b96; font-size:11px; cursor:pointer; }
+  .tabs button.act { background:#2a3547; color:#cfe1ff; border-color:#4c8dff; }
+  #d-body { font-family:Consolas,monospace; font-size:11px; white-space:pre-wrap; word-break:break-all;
+    max-height:150px; overflow-y:auto; color:#c9cad4; line-height:1.55; scrollbar-width:none; }
+  #d-body::-webkit-scrollbar { display:none; }
+  .kv { display:flex; gap:6px; font-size:11px; margin-bottom:3px; }
+  .kv b { color:#8ab8ff; font-weight:600; flex-shrink:0; font-family:Consolas,monospace; }
+  .kv span { word-break:break-all; }
+  .hint { font-size:10.5px; color:#6a6b76; line-height:1.7; margin-top:8px; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <div class="tt"><span class="dot" id="dot"></span><span id="st-txt">未启动</span><span style="flex:1"></span><span id="st-port" style="color:#6a6b76"></span></div>
+    <div class="tb">
+      <button id="b-toggle">开始抓包</button>
+      <button id="b-clear">清空</button>
+      <button id="b-pause">暂停</button>
+      <input id="f-in" placeholder="筛选：host / path / 方法 / 状态码">
+    </div>
+    <div class="cnt">已捕获 <b id="c-n">0</b> 条</div>
+    <div id="list"></div>
+    <div id="detail">
+      <div class="tabs" id="tabs"></div>
+      <div id="d-body"></div>
+    </div>
+    <div class="hint">首次启动会将根证书安装到「当前用户」受信任根存储（仅一次，无管理员要求）。HTTPS 由本地 MITM 解密，上游强制 HTTP/1.1。停止抓包自动还原系统代理。注意：浏览器访问 localhost/127.0.0.1 默认不走系统代理，抓不到属正常。</div>
+  </div>
+  <div id="strip" title="网络抓包">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-7 4 14 2-7h8"/></svg></span>
+    <span class="n" id="s-n">0</span>
+    <span class="lb" id="s-lb">抓包</span>
+  </div>
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  const strip = $('strip'), panel = $('panel');
+  let expanded = false;
+  let cfg = await tbp.config();
+  let running = false, paused = false;
+  let items = [];            // 全部捕获
+  const CAP = 500;
+  let selId = null, selTab = '概览';
+  const TABS = ['概览', '请求头', '请求体', '响应头', '响应体'];
+
+  // ---------- 状态 ----------
+  async function refreshStatus() {
+    try {
+      const s = await tbp.call('proxy.status');
+      running = !!s.running;
+      $('st-txt').textContent = running ? '抓包中' : '未启动';
+      $('st-port').textContent = running ? ('端口 ' + s.port) : '';
+      $('dot').className = 'dot' + (running ? ' on' : '');
+      $('b-toggle').textContent = running ? '停止' : '开始抓包';
+      $('b-toggle').className = running ? 'warn' : '';
+      strip.classList.toggle('on', running);
+      $('s-lb').textContent = running ? '抓包中' : '抓包';
+    } catch (e) {}
+  }
+
+  // ---------- 列表渲染 ----------
+  function fmtSize(n) {
+    if (!n) return '';
+    if (n < 1024) return n + 'B';
+    if (n < 1048576) return (n / 1024).toFixed(1) + 'K';
+    return (n / 1048576).toFixed(1) + 'M';
+  }
+  function matchFilter(it, f) {
+    if (!f) return true;
+    const hay = (it.method + ' ' + it.url + ' ' + it.status).toLowerCase();
+    return hay.includes(f);
+  }
+  function render() {
+    const f = $('f-in').value.trim().toLowerCase();
+    const box = $('list');
+    box.innerHTML = '';
+    const shown = [];
+    for (let i = items.length - 1; i >= 0 && shown.length < 120; i--) {
+      const it = items[i];
+      if (!matchFilter(it, f)) continue;
+      shown.push(it);
+      const div = document.createElement('div');
+      div.className = 'row' + (it.id === selId ? ' sel' : '');
+      const sc = it.status >= 500 ? 'red' : (it.status >= 400 ? 'warn' : (it.status >= 200 ? 'ok' : ''));
+      div.innerHTML = '<span class="m ' + it.method + '">' + it.method + '</span>' +
+        '<span class="s ' + sc + '">' + (it.status || '--') + '</span>' +
+        '<span class="u">' + escapeHtml(it.url.length > 90 ? it.url.slice(0, 90) + '…' : it.url) + '</span>' +
+        '<span class="t">' + it.durationMs + 'ms ' + fmtSize(it.respBody && it.respBody.size) + '</span>';
+      div.onclick = () => { selId = it.id; selTab = '概览'; render(); renderDetail(); };
+      box.appendChild(div);
+    }
+    if (!shown.length) {
+      box.innerHTML = '<div style="padding:14px;text-align:center;color:#5a5b66;font-size:11px">' + (running ? '等待流量…' : '点击「开始抓包」后产生流量将显示在这里') + '</div>';
+    }
+    $('c-n').textContent = items.length;
+    $('s-n').textContent = items.length > 999 ? '999+' : items.length;
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  }
+
+  // ---------- 详情 ----------
+  function headersHtml(h) {
+    const keys = Object.keys(h || {});
+    if (!keys.length) return '<span style="color:#5a5b66">（无）</span>';
+    return keys.map(k => '<div class="kv"><b>' + escapeHtml(k) + '</b><span>' + escapeHtml(h[k]) + '</span></div>').join('');
+  }
+  function bodyHtml(b) {
+    if (!b) return '<span style="color:#5a5b66">（无）</span>';
+    if (b.binary) return '<span style="color:#f6a821">二进制内容 ' + fmtSize(b.size) + '，不展示文本</span>';
+    let t = b.text || '';
+    try { t = JSON.stringify(JSON.parse(t), null, 2); } catch (e) {}
+    if (b.truncated) t += '\n\n…（已截断）';
+    return escapeHtml(t || '（空）');
+  }
+  function renderDetail() {
+    const it = items.find(x => x.id === selId);
+    $('detail').className = it ? 'show' : '';
+    if (!it) return;
+    $('tabs').innerHTML = TABS.map(t =>
+      '<button class="' + (t === selTab ? 'act' : '') + '" data-t="' + t + '">' + t + '</button>').join('');
+    $('tabs').querySelectorAll('button').forEach(b => b.onclick = () => { selTab = b.dataset.t; renderDetail(); });
+    let html = '';
+    if (selTab === '概览') {
+      html = '<div class="kv"><b>URL</b><span>' + escapeHtml(it.url) + '</span></div>' +
+        '<div class="kv"><b>方法</b><span>' + it.method + '</span></div>' +
+        '<div class="kv"><b>状态</b><span>' + (it.status || '连接失败/隧道') + '</span></div>' +
+        '<div class="kv"><b>耗时</b><span>' + it.durationMs + ' ms</span></div>' +
+        '<div class="kv"><b>时间</b><span>' + new Date(it.ts * 1000).toLocaleTimeString() + '</span></div>' +
+        '<div class="kv"><b>响应大小</b><span>' + fmtSize(it.respBody && it.respBody.size) + '</span></div>';
+    } else if (selTab === '请求头') html = headersHtml(it.reqHeaders);
+    else if (selTab === '响应头') html = headersHtml(it.respHeaders);
+    else if (selTab === '请求体') html = bodyHtml(it.reqBody);
+    else html = bodyHtml(it.respBody);
+    $('d-body').innerHTML = html;
+  }
+
+  // ---------- 事件 ----------
+  tbp.on('proxy', (p) => {
+    if (paused) return;
+    items.push(p);
+    if (items.length > CAP) items.splice(0, items.length - CAP);
+    if (expanded) render();
+    else $('s-n').textContent = items.length > 999 ? '999+' : items.length;
+  });
+
+  // ---------- 交互 ----------
+  strip.onclick = async () => {
+    expanded = !expanded;
+    panel.classList.toggle('open', expanded);
+    await tbp.call(expanded ? 'dock.expand' : 'dock.collapse', { height: 430 });
+    if (expanded) { selId = null; render(); renderDetail(); }
+  };
+  tbp.on('dock.collapsed', () => { expanded = false; panel.classList.remove('open'); });
+
+  $('b-toggle').onclick = async () => {
+    const btn = $('b-toggle');
+    btn.textContent = '…';
+    try {
+      if (running) await tbp.call('proxy.stop');
+      else await tbp.call('proxy.start', { port: +(cfg.port || 8899) });
+    } catch (e) {
+      btn.textContent = running ? '停止' : '开始抓包';
+      alert('抓包代理操作失败：' + (e.message || e));
+    }
+    await refreshStatus();
+  };
+  $('b-clear').onclick = () => { items = []; selId = null; render(); renderDetail(); };
+  $('b-pause').onclick = () => {
+    paused = !paused;
+    $('b-pause').textContent = paused ? '继续' : '暂停';
+    $('b-pause').style.color = paused ? '#f6a821' : '';
+  };
+  $('f-in').oninput = render;
+
+  refreshStatus();
+  tbp.ready();
+})();
+</script>
+</body>
+</html>

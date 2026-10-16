@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { background:transparent; font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+  body { display:flex; flex-direction:column; justify-content:flex-end; height:100vh; overflow:hidden; }
+  #strip { height:40px; display:flex; align-items:center; gap:8px; padding:0 10px; cursor:pointer;
+    overflow:hidden; white-space:nowrap; flex-shrink:0;
+    background:#2b2c33; border:1px solid #41424d; border-radius:7px; }
+  #strip .ic { color:#ff7a45; display:flex; flex-shrink:0; }
+  #strip .tt { font-size:11.5px; color:#c8cad4; overflow:hidden; text-overflow:ellipsis; min-width:0; flex:1; }
+  #strip .fd { font-size:10px; color:#6a6b76; flex-shrink:0; }
+  #panel { display:none; background:#1e1f24; border:1px solid #3a3b45; border-radius:10px;
+    margin:4px 4px 6px; color:#d5d6de; font-size:12px; width:340px;
+    flex-direction:column; overflow:hidden; flex-shrink:0; }
+  #panel.open { display:flex; }
+  .hd { display:flex; align-items:center; gap:6px; padding:8px 10px; border-bottom:1px solid #2c2d34; flex-shrink:0; }
+  .hd button { height:24px; padding:0 8px; border:1px solid #3a3b45; border-radius:6px; background:#141519;
+    color:#9ab8e8; font-size:11px; cursor:pointer; }
+  .hd button:hover { border-color:#4c8dff; color:#fff; }
+  #items { flex:1; overflow-y:auto; padding:5px 6px; }
+  #items::-webkit-scrollbar { width:0; height:0; }
+  .it { padding:6px 7px; border-radius:6px; cursor:pointer; }
+  .it:hover { background:#26272e; }
+  .it .t { font-size:11.5px; color:#d5d6de; line-height:1.5;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .it .m { font-size:10px; color:#6a6b76; margin-top:2px; }
+  .it .m b { color:#ff9a63; font-weight:500; }
+  #cfg { padding:12px; display:none; flex-direction:column; gap:7px; flex-shrink:0; }
+  #cfg.open { display:flex; }
+  #cfg textarea { height:110px; background:#141519; border:1px solid #2c2d34; border-radius:6px;
+    color:#b6c6e2; font-family:Consolas,monospace; font-size:11px; padding:9px; outline:none; resize:none; }
+  #cfg .rw { display:flex; gap:7px; align-items:center; }
+  #cfg input { width:70px; height:26px; background:#141519; border:1px solid #2c2d34; border-radius:6px;
+    color:#e6e7ec; font-size:11.5px; padding:0 8px; outline:none; }
+  #cfg button { height:26px; padding:0 10px; border:1px solid #3a3b45; border-radius:6px; background:#141519;
+    color:#9ab8e8; font-size:11px; cursor:pointer; }
+  #cfg .tip { font-size:10.5px; color:#6a6b76; line-height:1.7; }
+  #empty { color:#4a4b55; font-size:11px; text-align:center; padding:16px 0; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <div class="hd">
+      <button id="b-refresh">⟳ 刷新</button>
+      <button id="b-cfg">⚙ 订阅源</button>
+      <span id="p-stat" style="margin-left:auto;font-size:10.5px;color:#6a6b76"></span>
+    </div>
+    <div id="cfg">
+      <div class="tip">每行一个订阅源：<b>名称, URL</b></div>
+      <textarea id="c-feeds" spellcheck="false"></textarea>
+      <div class="rw">轮询间隔(分钟) <input id="c-interval" type="number" min="5"></div>
+      <div class="rw"><button id="c-save">保存并抓取</button><button id="c-cancel">取消</button></div>
+    </div>
+    <div id="items"></div>
+    <div id="empty" hidden>暂无内容，点 ⚙ 添加订阅源</div>
+  </div>
+  <div id="strip" title="点击查看订阅文章">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1.6" fill="currentColor" stroke="none"/></svg></span>
+    <span class="tt" id="s-tt">RSS 订阅</span>
+    <span class="fd" id="s-fd"></span>
+  </div>
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  const strip = $('strip'), panel = $('panel');
+  let expanded = false;
+  let cfg = await tbp.config();
+  let items = [];
+  let timer = null, tick = 0;
+
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const stripHtml = (s) => { const d = document.createElement('div'); d.innerHTML = s || ''; return d.textContent.trim(); };
+
+  function feeds() { return Array.isArray(cfg.feeds) ? cfg.feeds : []; }
+
+  async function fetchFeed(feed) {
+    const r = await tbp.call('http.request', { method: 'GET', url: feed.url, maxBytes: 1024 * 1024 });
+    if (r.status >= 400) throw new Error(feed.name + ' HTTP ' + r.status);
+    const doc = new DOMParser().parseFromString(r.body, 'text/xml');
+    const isAtom = !!doc.getElementsByTagName('entry').length;
+    const nodes = isAtom ? doc.getElementsByTagName('entry') : doc.getElementsByTagName('item');
+    const out = [];
+    for (const n of nodes) {
+      const pick = (tag) => { const els = n.getElementsByTagName(tag); return els[0] ? els[0].textContent : ''; };
+      let link = pick('link');
+      if (isAtom) { const l = n.getElementsByTagName('link')[0]; link = l ? (l.getAttribute('href') || l.textContent) : ''; }
+      const title = stripHtml(pick('title'));
+      const date = pick('pubDate') || pick('published') || pick('updated') || '';
+      if (title) out.push({ title, link, feed: feed.name, ts: Date.parse(date) || 0 });
+      if (out.length >= (cfg.maxItems || 40)) break;
+    }
+    return out;
+  }
+
+  async function refresh(silent) {
+    const fs2 = feeds();
+    if (!fs2.length) { $('s-tt').textContent = 'RSS 订阅'; return; }
+    if (!silent) $('s-tt').textContent = '抓取中…';
+    items = [];
+    let ok = 0;
+    for (const f of fs2) {
+      try { items = items.concat(await fetchFeed(f)); ok++; } catch (e) {}
+    }
+    items.sort((a, b) => b.ts - a.ts);
+    items = items.slice(0, cfg.maxItems || 40);
+    render();
+    $('s-fd').textContent = ok + '/' + fs2.length;
+    $('p-stat').textContent = items.length + ' 篇';
+    if (!items.length) $('s-tt').textContent = '抓取失败';
+  }
+
+  function render() {
+    const box = $('items');
+    box.innerHTML = '';
+    $('empty').hidden = items.length > 0;
+    for (const it of items) {
+      const d = document.createElement('div');
+      d.className = 'it';
+      d.innerHTML = '<div class="t">' + esc(it.title) + '</div><div class="m"><b>' + esc(it.feed) + '</b>' +
+        (it.ts ? ' · ' + new Date(it.ts).toLocaleDateString() : '') + '</div>';
+      d.onclick = () => { if (it.link) tbp.call('shell.open', { url: it.link }); };
+      box.appendChild(d);
+    }
+  }
+
+  // 条上滚动头条
+  setInterval(() => {
+    if (!items.length || expanded) return;
+    tick = (tick + 1) % items.length;
+    $('s-tt').textContent = items[tick].title;
+  }, 5000);
+
+  function schedule() {
+    if (timer) clearInterval(timer);
+    const min = Math.max(5, +(cfg.intervalMin || 30));
+    timer = setInterval(() => refresh(true), min * 60000);
+  }
+
+  strip.onclick = async () => {
+    expanded = !expanded;
+    panel.classList.toggle('open', expanded);
+    $('cfg').classList.remove('open');
+    await tbp.call(expanded ? 'dock.expand' : 'dock.collapse', { height: 400 });
+    if (expanded && !items.length) refresh();
+  };
+  tbp.on('dock.collapsed', () => { expanded = false; panel.classList.remove('open'); });
+
+  $('b-refresh').onclick = () => refresh();
+  $('b-cfg').onclick = () => {
+    const c = $('cfg');
+    c.classList.toggle('open');
+    if (c.classList.contains('open')) {
+      $('c-feeds').value = feeds().map(f => (f.name || '') + ', ' + (f.url || '')).join('\n');
+      $('c-interval').value = cfg.intervalMin || 30;
+    }
+  };
+  $('c-cancel').onclick = () => $('cfg').classList.remove('open');
+  $('c-save').onclick = async () => {
+    const lines = $('c-feeds').value.split('\n').map(l => l.trim()).filter(Boolean);
+    cfg.feeds = lines.map(l => {
+      const i = l.indexOf(',');
+      return i < 0 ? { name: l, url: l } : { name: l.slice(0, i).trim(), url: l.slice(i + 1).trim() };
+    }).filter(f => /^https?:\/\//.test(f.url));
+    cfg.intervalMin = Math.max(5, +$('c-interval').value || 30);
+    try { await tbp.saveConfig(cfg); } catch (e) {}
+    $('cfg').classList.remove('open');
+    schedule();
+    refresh();
+  };
+
+  schedule();
+  setTimeout(() => refresh(true), 1000);
+  tbp.ready();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { background:transparent; font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+  body { display:flex; flex-direction:column; justify-content:flex-end; height:100vh; overflow:hidden; }
+  #strip { height:40px; display:flex; align-items:center; gap:7px; padding:0 10px; cursor:pointer;
+    overflow:hidden; white-space:nowrap; flex-shrink:0;
+    background:#2b2c33; border:1px solid #41424d; border-radius:7px; }
+  #strip .ic { color:#ffc371; display:flex; flex-shrink:0; }
+  #strip .lb { font-size:11.5px; color:#c8cad4; overflow:hidden; text-overflow:ellipsis; }
+  #panel { display:none; background:#1e1f24; border:1px solid #3a3b45; border-radius:10px;
+    margin:4px 4px 6px; width:320px; flex-shrink:0; flex-direction:column; overflow:hidden; }
+  #panel.open { display:flex; }
+  .srch { display:flex; gap:6px; padding:9px 10px; border-bottom:1px solid #2c2d34; flex-shrink:0; }
+  .srch input { flex:1; height:28px; background:#141519; border:1px solid #2c2d34; border-radius:6px;
+    color:#e6e7ec; font-size:12px; padding:0 9px; outline:none; }
+  .srch input:focus { border-color:#4c8dff; }
+  .srch button { width:34px; border:1px solid #3a3b45; border-radius:6px; background:#141519; color:#9ab8e8;
+    font-size:13px; cursor:pointer; }
+  .srch button:hover { border-color:#4c8dff; color:#fff; }
+  #list { flex:1; overflow-y:auto; padding:4px 5px; min-height:120px; }
+  #list::-webkit-scrollbar { width:0; }
+  .it { display:flex; align-items:center; gap:7px; padding:5px 7px; border-radius:6px; cursor:pointer; }
+  .it:hover { background:#26272e; }
+  .it .fn { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11.5px; }
+  .it .fd { max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px;
+    color:#6a6b76; font-family:Consolas,monospace; }
+  #st { padding:5px 10px; font-size:10.5px; color:#6a6b76; border-top:1px solid #2c2d34; flex-shrink:0; }
+  #st.err { color:#f85149; }
+  #cfg { display:none; flex-direction:column; gap:6px; padding:9px 10px; border-top:1px solid #2c2d34; flex-shrink:0; }
+  #cfg.open { display:flex; }
+  #cfg .rw { display:flex; gap:6px; align-items:center; font-size:11px; color:#9a9ba6; }
+  #cfg input { flex:1; height:26px; background:#141519; border:1px solid #2c2d34; border-radius:6px;
+    color:#e6e7ec; font-size:11.5px; padding:0 8px; outline:none; }
+  #cfg button { height:26px; padding:0 10px; border:1px solid #3a3b45; border-radius:6px; background:#141519;
+    color:#9ab8e8; font-size:11px; cursor:pointer; }
+  .tip { font-size:10px; color:#6a6b76; padding:6px 10px; line-height:1.7; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <div class="srch">
+      <input id="q" placeholder="输入文件名，回车搜索（Everything 秒搜）">
+      <button id="b-go" title="搜索">⌕</button>
+      <button id="b-cfg" title="连接设置">⚙</button>
+    </div>
+    <div id="list"></div>
+    <div id="st">就绪</div>
+    <div id="cfg">
+      <div class="rw">HTTP 地址 <input id="c-url" placeholder="http://127.0.0.1"></div>
+      <div class="rw">端口 <input id="c-port" placeholder="80" style="max-width:80px"><button id="c-save">保存</button><button id="c-cancel">取消</button></div>
+    </div>
+    <div class="tip">需安装 Everything 并开启 HTTP 服务器：Everything → 工具 → 选项 → HTTP 服务器 → 勾选"启用 HTTP 服务器"。点击结果直接打开文件所在位置。</div>
+  </div>
+  <div id="strip" title="点击搜索本地文件">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></span>
+    <span class="lb" id="s-lb">文件搜索</span>
+  </div>
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  const strip = $('strip'), panel = $('panel');
+  let expanded = false;
+  let cfg = await tbp.config();
+  let lastQ = '';
+
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  function base() { return (cfg.baseUrl || 'http://127.0.0.1').replace(/\/+$/, '') + ':' + (cfg.port || 80); }
+
+  async function search(q) {
+    if (!q) return;
+    lastQ = q;
+    const st = $('st');
+    st.className = ''; st.textContent = '搜索中…';
+    try {
+      const r = await tbp.call('http.request', { method: 'GET', url: base() + '/?search=' + encodeURIComponent(q), maxBytes: 1024 * 1024 });
+      if (r.status >= 400) throw new Error('HTTP ' + r.status);
+      const doc = new DOMParser().parseFromString(r.body, 'text/html');
+      const links = Array.from(doc.querySelectorAll('a[href]'));
+      const seen = new Set();
+      const out = [];
+      for (const a of links) {
+        const href = a.getAttribute('href') || '';
+        const text = (a.textContent || '').trim();
+        // Everything 结果链接形如 /C:\path\file 或带 ?path=
+        let p = decodeURIComponent(href);
+        if (p.startsWith('/')) p = p.slice(1);
+        p = p.replace(/\//g, '\\');
+        if (!/^[a-zA-Z]:\\/.test(p) || !text || seen.has(p.toLowerCase())) continue;
+        seen.add(p.toLowerCase());
+        const name = p.split('\\').pop();
+        out.push({ name, path: p });
+        if (out.length >= 50) break;
+      }
+      render(out);
+      st.textContent = out.length ? (out.length + ' 个结果 · Everything') : '无结果';
+      if (!out.length && /enable http/i.test(r.body || '')) {
+        st.textContent = 'Everything HTTP 服务器未启用，见下方说明';
+      }
+    } catch (e) {
+      st.className = 'err';
+      st.textContent = '连不上 Everything（' + (e.message || e) + '）';
+      render([]);
+    }
+  }
+
+  function render(list) {
+    const box = $('list');
+    box.innerHTML = '';
+    for (const it of list) {
+      const d = document.createElement('div');
+      d.className = 'it';
+      d.title = it.path;
+      d.innerHTML = '<span style="color:#6a6b76;flex-shrink:0;display:flex"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>' +
+        '<span class="fn">' + esc(it.name) + '</span><span class="fd">' + esc(it.path.slice(0, -it.name.length - 1)) + '</span>';
+      d.onclick = () => tbp.call('shell.open', { url: 'file:///' + it.path.replace(/\\/g, '/') });
+      box.appendChild(d);
+    }
+  }
+
+  strip.onclick = async () => {
+    expanded = !expanded;
+    panel.classList.toggle('open', expanded);
+    await tbp.call(expanded ? 'dock.expand' : 'dock.collapse', { height: 340 });
+    if (expanded) setTimeout(() => $('q').focus(), 100);
+  };
+  tbp.on('dock.collapsed', () => { expanded = false; panel.classList.remove('open'); });
+
+  $('b-go').onclick = () => search($('q').value.trim());
+  $('q').onkeydown = (e) => { if (e.key === 'Enter') search($('q').value.trim()); };
+  $('b-cfg').onclick = () => {
+    const c = $('cfg');
+    c.classList.toggle('open');
+    if (c.classList.contains('open')) {
+      $('c-url').value = cfg.baseUrl || 'http://127.0.0.1';
+      $('c-port').value = cfg.port || 80;
+    }
+  };
+  $('c-cancel').onclick = () => $('cfg').classList.remove('open');
+  $('c-save').onclick = async () => {
+    cfg.baseUrl = ($('c-url').value.trim() || 'http://127.0.0.1').replace(/\/+$/, '');
+    cfg.port = +$('c-port').value || 80;
+    try { await tbp.saveConfig(cfg); } catch (e) {}
+    $('cfg').classList.remove('open');
+    if (lastQ) search(lastQ);
+  };
+
+  tbp.ready();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { background:transparent; font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+  body { display:flex; align-items:center; justify-content:center; height:100vh; }
+  #w { display:flex; align-items:center; gap:7px; color:#d5d6de; font-size:12px; cursor:pointer;
+    padding:0 8px; overflow:hidden; white-space:nowrap; max-width:100%; height:40px;
+    background:#2b2c33; border:1px solid #41424d; border-radius:7px; }
+  #t { font-size:13px; color:#9ab8e8; font-family:Consolas,monospace; flex-shrink:0; }
+  #c { color:#71727e; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+</style>
+</head>
+<body>
+  <div id="w"><span id="t">--°</span><span id="c">点击刷新</span></div>
+<script>
+(async () => {
+  const cfg = await tbp.config();
+  async function refresh() {
+    document.getElementById('c').textContent = '加载中…';
+    try {
+      const city = cfg.city ? encodeURIComponent(cfg.city) : '';
+      const r = await tbp.call('http.get', { url: 'https://wttr.in/' + city + '?format=j1' });
+      if (r.status !== 200) throw new Error('HTTP ' + r.status);
+      const d = JSON.parse(r.body);
+      const cur = d.current_condition[0];
+      const area = d.nearest_area[0].areaName[0].value;
+      document.getElementById('t').textContent = cur.temp_C + '°';
+      document.getElementById('c').textContent = area + ' ' + (cur.weatherDesc[0].value || '');
+    } catch (e) {
+      document.getElementById('c').textContent = '加载失败，点击重试';
+    }
+  }
+  document.getElementById('w').onclick = refresh;
+  refresh();
+  tbp.ready();
+})();
+</script>
+</body>
+</html>

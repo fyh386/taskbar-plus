@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { background:transparent; font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+  body { display:flex; flex-direction:column; justify-content:flex-end; height:100vh; overflow:hidden; }
+  /* 条带保持图标宽度：弹层展开时 iframe 变宽，但可见条带仍 64px 且右对齐（图标位置不动） */
+  #strip { height:40px; display:flex; align-items:center; justify-content:center; cursor:pointer;
+    position:relative; width:100%; max-width:64px; margin-left:auto;
+    background:#2b2c33; border:1px solid #41424d; border-radius:7px; }
+  #strip svg { width:18px; height:18px; stroke:#4c8dff; fill:none; stroke-width:1.7;
+    stroke-linecap:round; stroke-linejoin:round; }
+  #strip .m { position:absolute; top:3px; right:5px; font-size:8.5px; color:#9ab8e8;
+    font-family:Consolas,monospace; }
+  #panel { display:none; background:#1e1f24; border:1px solid #3a3b45; border-radius:10px;
+    margin:0 4px 6px; padding:12px 14px; color:#d5d6de; font-size:12px; width:380px;
+    max-height:308px; overflow:auto; }
+  #panel.open { display:block; }
+  .row { display:flex; gap:6px; margin-bottom:7px; align-items:center; }
+  select { background:#141519; color:#d5d6de; border:1px solid #3a3b45; border-radius:6px;
+    padding:5px 6px; font-size:11.5px; outline:none; font-family:Consolas,monospace; }
+  input[type=text], textarea { background:#141519; border:1px solid #3a3b45; border-radius:6px;
+    color:#d5d6de; font-size:11.5px; outline:none; user-select:text; padding:5px 8px; }
+  input[type=text]:focus, textarea:focus { border-color:#4c8dff; }
+  #url { flex:1; min-width:0; font-family:Consolas,monospace; }
+  textarea { width:100%; resize:none; font-family:Consolas,monospace; line-height:1.6; }
+  #headers { height:44px; }
+  #body { height:52px; }
+  .btn { height:26px; padding:0 13px; border:none; border-radius:6px; font-size:12px;
+    cursor:pointer; color:#fff; background:#2b7a4b; flex-shrink:0; }
+  .btn:hover { filter:brightness(1.2); }
+  .btn:disabled { opacity:.5; }
+  .sec { font-size:10.5px; color:#6a6b76; margin:8px 0 4px; }
+  #resp { background:#141519; border:1px solid #2c2d34; border-radius:6px; padding:7px 9px;
+    font-size:10.5px; font-family:Consolas,monospace; color:#9a9ba6; line-height:1.65;
+    max-height:110px; overflow:auto; user-select:text; white-space:pre-wrap; word-break:break-all; }
+  #status.ok { color:#3fb950; } #status.err { color:#f85149; }
+  #hist { font-size:10.5px; font-family:Consolas,monospace; color:#6a6b76; }
+  #hist div { padding:2px 6px; border-radius:4px; cursor:pointer; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; }
+  #hist div:hover { background:#33343d; color:#d5d6de; }
+  .hint { color:#4a4b55; font-size:11px; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <div class="row">
+      <select id="method">
+        <option>GET</option><option>POST</option><option>PUT</option>
+        <option>DELETE</option><option>PATCH</option><option>HEAD</option>
+      </select>
+      <input id="url" type="text" placeholder="https://api.example.com/path">
+      <button class="btn" id="send">发送</button>
+    </div>
+    <div class="sec">请求头（每行一个 Key: Value）</div>
+    <textarea id="headers" placeholder="Authorization: Bearer xxx&#10;Accept: application/json"></textarea>
+    <div class="sec">请求体（JSON，GET/HEAD 忽略）</div>
+    <textarea id="body" placeholder='{"key": "value"}'></textarea>
+    <div class="sec">响应 <span id="status"></span></div>
+    <div id="resp">点击「发送」发起请求。</div>
+    <div class="sec">历史（点击回填）</div>
+    <div id="hist"><span class="hint">暂无</span></div>
+  </div>
+  <div id="strip" title="HTTP 请求">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 4 5.7 4 9s-1.5 6.4-4 9c-2.5-2.6-4-5.7-4-9s1.5-6.4 4-9z"/></svg>
+    <span class="m" id="mlabel"></span>
+  </div>
+<script>
+(async () => {
+  const cfg = await tbp.config();
+  const $ = id => document.getElementById(id);
+  const panel = $('panel'), resp = $('resp');
+  let expanded = false;
+
+  $('method').value = cfg.method || 'GET';
+  $('url').value = cfg.url || '';
+  $('headers').value = cfg.headersText || '';
+  $('body').value = cfg.body || '';
+  $('mlabel').textContent = (cfg.method || 'GET').slice(0, 4);
+  $('method').onchange = () => { $('mlabel').textContent = $('method').value.slice(0, 4); persist(); };
+
+  function persist() {
+    cfg.method = $('method').value;
+    cfg.url = $('url').value;
+    cfg.headersText = $('headers').value;
+    cfg.body = $('body').value;
+    tbp.saveConfig(cfg);
+  }
+  ['url', 'headers', 'body'].forEach(id => $(id).addEventListener('change', persist));
+
+  function renderHist() {
+    const h = cfg.history || [];
+    const el = $('hist');
+    el.innerHTML = '';
+    if (!h.length) { el.innerHTML = '<span class="hint">暂无</span>'; return; }
+    h.slice(0, 8).forEach(it => {
+      const d = document.createElement('div');
+      d.textContent = it.method + ' ' + it.url;
+      d.title = it.url;
+      d.onclick = () => {
+        $('method').value = it.method; $('url').value = it.url;
+        $('mlabel').textContent = it.method.slice(0, 4);
+        persist();
+      };
+      el.appendChild(d);
+    });
+  }
+  renderHist();
+
+  function parseHeaders() {
+    const obj = {};
+    $('headers').value.split('\n').forEach(line => {
+      const i = line.indexOf(':');
+      if (i > 0) {
+        const k = line.slice(0, i).trim();
+        if (k) obj[k] = line.slice(i + 1).trim();
+      }
+    });
+    return obj;
+  }
+
+  $('send').onclick = async () => {
+    const url = $('url').value.trim();
+    if (!url) { resp.textContent = '请输入 URL'; return; }
+    persist();
+    const method = $('method').value;
+    const btn = $('send');
+    btn.disabled = true; btn.textContent = '请求中…';
+    $('status').textContent = ''; $('status').className = '';
+    resp.textContent = method + ' ' + url + '\n等待响应…';
+    try {
+      const r = await tbp.call('http.request', {
+        method, url, headers: parseHeaders(),
+        body: ['GET', 'HEAD'].includes(method) ? '' : $('body').value
+      });
+      const st = $('status');
+      st.textContent = '· HTTP ' + r.status;
+      st.className = r.status < 400 ? 'ok' : 'err';
+      let body = r.body || '';
+      try { body = JSON.stringify(JSON.parse(body), null, 2); } catch (e) {}
+      if (body.length > 4000) body = body.slice(0, 4000) + '\n…(截断)';
+      const ct = r.headers && (r.headers['content-type'] || '');
+      resp.textContent = 'HTTP ' + r.status + (ct ? '  ' + ct : '') + '\n\n' + (body || '(空响应体)');
+      cfg.history = cfg.history || [];
+      cfg.history.unshift({ method, url, ts: Date.now() });
+      cfg.history = cfg.history.slice(0, 20);
+      persist(); renderHist();
+    } catch (e) {
+      $('status').textContent = '· 失败';
+      $('status').className = 'err';
+      resp.textContent = '请求失败：' + (e.message || e);
+    } finally {
+      btn.disabled = false; btn.textContent = '发送';
+    }
+  };
+
+  document.getElementById('strip').onclick = async () => {
+    expanded = !expanded;
+    panel.classList.toggle('open', expanded);
+    await tbp.call(expanded ? 'dock.expand' : 'dock.collapse', { height: 330 });
+  };
+  tbp.on('dock.collapsed', () => {
+    expanded = false;
+    panel.classList.remove('open');
+  });
+  tbp.ready();
+})();
+</script>
+</body>
+</html>

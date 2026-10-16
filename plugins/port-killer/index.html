@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { background:transparent; font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+  body { display:flex; flex-direction:column; justify-content:flex-end; height:100vh; overflow:hidden; }
+  #strip { height:40px; display:flex; align-items:center; gap:7px; padding:0 10px; cursor:pointer;
+    overflow:hidden; white-space:nowrap; flex-shrink:0;
+    background:#2b2c33; border:1px solid #41424d; border-radius:7px; }
+  #strip .ic { color:#c792ea; display:flex; flex-shrink:0; }
+  #strip .lb { font-size:12px; color:#9a9ba6; overflow:hidden; text-overflow:ellipsis; }
+  #strip.busy .lb { color:#c792ea; }
+  #panel { display:none; background:#1e1f24; border:1px solid #3a3b45; border-radius:10px;
+    margin:4px 4px 6px; padding:12px; color:#d5d6de; font-size:12px; width:400px; flex-shrink:0;
+    max-height:400px; overflow-y:auto; scrollbar-width:none; }
+  #panel::-webkit-scrollbar { display:none; }
+  #panel.open { display:block; }
+  .tt { font-size:11px; color:#8ab8ff; margin-bottom:8px; }
+  .rw { display:flex; gap:7px; margin-bottom:8px; }
+  #q { flex:1; height:30px; background:#141519; border:1px solid #2c2d34; border-radius:6px;
+    color:#e6e7ec; font-size:12.5px; padding:0 10px; outline:none; font-family:Consolas,monospace; }
+  #q:focus { border-color:#4c8dff; }
+  .rw button { height:30px; padding:0 12px; border:1px solid #3a3b45; border-radius:6px; background:#141519;
+    color:#9ab8e8; font-size:11.5px; cursor:pointer; }
+  .rw button:hover { border-color:#4c8dff; color:#fff; }
+  #msg { font-size:11px; min-height:15px; margin-bottom:6px; }
+  #msg.err { color:#f85149; } #msg.ok { color:#6ee7a0; }
+  .sec { font-size:10.5px; color:#6a6b76; margin:9px 0 5px; }
+  table { width:100%; border-collapse:collapse; font-size:11px; }
+  td,th { text-align:left; padding:4px 5px; border-bottom:1px solid #23242a; }
+  th { color:#6a6b76; font-weight:600; font-size:10.5px; }
+  td { color:#c9cad4; }
+  td.mono { font-family:Consolas,monospace; }
+  tr.hit td { background:#2a3547; }
+  .kill { height:20px; padding:0 8px; border:1px solid #5a3038; border-radius:5px; background:transparent;
+    color:#f85149; font-size:10.5px; cursor:pointer; }
+  .kill:hover { background:#f85149; color:#fff; }
+  .nm { max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .st { color:#6ee7a0; } .st.w { color:#f6a821; }
+  .hint { font-size:10.5px; color:#6a6b76; line-height:1.7; margin-top:9px; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <div class="tt">端口占用速查</div>
+    <div class="rw">
+      <input id="q" placeholder="输入端口，如 8080" inputmode="numeric">
+      <button id="b-find">查询</button>
+      <button id="b-refresh">刷新</button>
+    </div>
+    <div id="msg"></div>
+    <div id="hits"></div>
+    <div class="sec">全部 LISTEN 端口</div>
+    <div id="all"></div>
+    <div class="hint">结束系统进程可能失败（需要以管理员身份运行 TaskBar Plus）。</div>
+  </div>
+  <div id="strip" title="端口占用速查">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6M11 8v6"/></svg></span>
+    <span class="lb" id="s-lb">端口速查</span>
+  </div>
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  const strip = $('strip'), panel = $('panel');
+  let expanded = false;
+  let rows = [], cacheTs = 0;
+
+  async function loadRows(force) {
+    const now = Date.now();
+    if (!force && rows.length && now - cacheTs < 5000) return rows;
+    const r = await tbp.call('net.ports');
+    rows = r.rows || [];
+    cacheTs = now;
+    return rows;
+  }
+
+  function esc(s) { return String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  function hitHtml(r) {
+    return '<tr class="hit">' +
+      '<td class="mono">' + r.proto + '</td>' +
+      '<td class="mono">' + esc(r.local) + '</td>' +
+      '<td class="st' + (r.state === 'LISTEN' ? '' : ' w') + '">' + (r.state || '--') + '</td>' +
+      '<td class="mono">' + r.pid + '</td>' +
+      '<td class="nm" title="' + esc(r.exe || r.name) + '">' + esc(r.name || '?') + '</td>' +
+      '<td><button class="kill" data-pid="' + r.pid + '">结束</button></td></tr>';
+  }
+
+  async function find() {
+    const q = $('q').value.trim();
+    const msg = $('msg');
+    if (!q) { msg.textContent = '请输入端口号'; msg.className = 'err'; return; }
+    strip.classList.add('busy');
+    try {
+      const all = await loadRows(true);
+      const hits = all.filter(r => (r.local || '').endsWith(':' + q));
+      if (!hits.length) {
+        msg.textContent = '端口 ' + q + ' 未被占用';
+        msg.className = 'ok';
+        $('hits').innerHTML = '';
+      } else {
+        msg.textContent = '端口 ' + q + ' 被 ' + hits.length + ' 个连接占用：';
+        msg.className = '';
+        $('hits').innerHTML = '<table><tr><th>协议</th><th>本地地址</th><th>状态</th><th>PID</th><th>进程</th><th></th></tr>' +
+          hits.map(hitHtml).join('') + '</table>';
+      }
+    } catch (e) {
+      msg.textContent = '查询失败：' + (e.message || e);
+      msg.className = 'err';
+    }
+    strip.classList.remove('busy');
+  }
+
+  async function renderAll() {
+    try {
+      const all = await loadRows();
+      const listens = all.filter(r => r.state === 'LISTEN');
+      $('all').innerHTML = listens.length
+        ? '<table><tr><th>协议</th><th>监听地址</th><th>PID</th><th>进程</th></tr>' +
+          listens.slice(0, 80).map(r =>
+            '<tr><td class="mono">' + r.proto + '</td><td class="mono">' + esc(r.local) + '</td>' +
+            '<td class="mono">' + r.pid + '</td><td class="nm" title="' + esc(r.exe || r.name) + '">' + esc(r.name || '?') + '</td></tr>'
+          ).join('') + '</table>' +
+          (listens.length > 80 ? '<div style="color:#5a5b66;padding:4px;font-size:10.5px">仅显示前 80 条</div>' : '')
+        : '<div style="color:#5a5b66;padding:4px">无监听端口</div>';
+    } catch (e) {
+      $('all').innerHTML = '<div style="color:#f85149;padding:4px">加载失败：' + esc(e.message || e) + '</div>';
+    }
+  }
+
+  strip.onclick = async () => {
+    expanded = !expanded;
+    panel.classList.toggle('open', expanded);
+    await tbp.call(expanded ? 'dock.expand' : 'dock.collapse', { height: 400 });
+    if (expanded) { loadRows(true).then(() => { renderAll(); if ($('q').value.trim()) find(); }); }
+  };
+  tbp.on('dock.collapsed', () => { expanded = false; panel.classList.remove('open'); });
+
+  $('b-find').onclick = find;
+  $('q').addEventListener('keydown', e => { if (e.key === 'Enter') find(); });
+  $('b-refresh').onclick = async () => { await loadRows(true); renderAll(); if ($('q').value.trim()) find(); };
+
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.kill');
+    if (!btn) return;
+    const pid = +btn.dataset.pid;
+    const r = rows.find(x => x.pid === pid);
+    const name = r ? (r.name || r.exe || pid) : pid;
+    if (!confirm('结束进程 ' + name + '（PID ' + pid + '）？')) return;
+    try {
+      await tbp.call('net.kill', { pid });
+      await loadRows(true);
+      renderAll();
+      if ($('q').value.trim()) find();
+    } catch (err) {
+      alert('结束失败：' + (err.message || err));
+    }
+  });
+
+  tbp.ready();
+})();
+</script>
+</body>
+</html>

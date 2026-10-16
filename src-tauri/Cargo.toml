@@ -1,0 +1,62 @@
+[package]
+name = "taskbar-plus"
+version = "0.1.0"
+description = "Pluggable plugin dock for the Windows taskbar"
+edition = "2021"
+rust-version = "1.77"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1" }
+sysinfo = "0.33"
+include_dir = "0.7"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls-native-roots"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+rfd = "0.15"
+tokio = { version = "1", features = ["time"] }
+urlencoding = "2"
+base64 = "0.23"
+rustls = { version = "0.23", default-features = false, features = ["std", "ring"] }
+webpki-roots = "1"
+rcgen = { version = "0.13", features = ["ring", "x509-parser"] }
+windows-sys = { version = "0.59", features = [
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_Graphics_Dwm",
+  "Win32_UI_Controls",
+  "Win32_System_DataExchange",
+  "Win32_System_Memory",
+  "Win32_System_Threading",
+  "Win32_System_ProcessStatus",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_Networking_WinInet",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Pipes",
+  "Win32_Security",
+  "Win32_System_IO",
+  "Win32_UI_HiDpi",
+  "Win32_Networking_WinSock",
+] }
+
+[patch.crates-io]
+tauri-winres = { path = "vendor/tauri-winres" }
+
+[profile.dev]
+# crt-static 与增量编译同时启用会触发 rustc 元数据 bug（only metadata stub found）
+incremental = false
+
+[profile.release]
+opt-level = 2
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+incremental = false

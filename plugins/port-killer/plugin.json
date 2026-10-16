@@ -1,0 +1,10 @@
+{
+  "id": "builtin.port-killer",
+  "name": "端口速查",
+  "version": "1.0.0",
+  "author": "TaskBar Plus",
+  "description": "输入端口号立刻看到是谁占用的（进程名/路径/PID），一键结束进程；附全部 LISTEN 端口表",
+  "permissions": ["net"],
+  "width": { "min": 110, "max": 220, "default": 130 },
+  "config": {}
+}

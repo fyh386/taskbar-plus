@@ -1,0 +1,12 @@
+{
+  "id": "builtin.hosts-switch",
+  "name": "Hosts 切换",
+  "version": "1.0.0",
+  "author": "TaskBar Plus",
+  "description": "Hosts 编辑与多套配置切换：保存即应用（提权写入 + 自动刷新 DNS）",
+  "permissions": ["hosts"],
+  "width": { "min": 120, "max": 240, "default": 140 },
+  "config": {
+    "profiles": []
+  }
+}

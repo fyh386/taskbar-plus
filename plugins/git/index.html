@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { background:transparent; font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+  body { display:flex; flex-direction:column; justify-content:flex-end; height:100vh; overflow:hidden; }
+  #strip { height:40px; display:flex; align-items:center; gap:7px; padding:0 10px; cursor:pointer;
+    white-space:nowrap; flex-shrink:0;
+    background:#2b2c33; border:1px solid #41424d; border-radius:7px; }
+  #branch { font-family:Consolas,monospace; color:#6ee7a0; font-size:12px; background:#141519;
+    padding:3px 9px; border-radius:6px; display:flex; align-items:center; gap:6px; flex-shrink:0; }
+  .dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+  .dirty { background:#f85149; box-shadow:0 0 6px #f85149; }
+  .clean { background:#3fb950; }
+  .btn { height:26px; padding:0 10px; border:none; border-radius:6px; font-size:12px; cursor:pointer;
+    color:#fff; flex-shrink:0; }
+  #pull { background:#8a5a00; } #push { background:#1f6feb; }
+  .btn:hover { filter:brightness(1.25); }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .btn.gray { background:#33343d; }
+  .btn.green { background:#2b7a4b; }
+  .btn.red { background:#a03030; }
+  #panel { display:none; background:#1e1f24; border:1px solid #3a3b45; border-radius:10px;
+    margin:0 4px 6px; padding:11px 13px; color:#d5d6de; font-size:12px; height:332px;
+    overflow:auto; width:322px; }
+  #panel.open { display:block; }
+  .row { display:flex; gap:6px; align-items:center; margin-bottom:7px; }
+  select { flex:1; min-width:0; background:#141519; color:#d5d6de; border:1px solid #3a3b45;
+    border-radius:6px; padding:5px; font-size:11.5px; outline:none; }
+  input[type=text] { flex:1; min-width:0; background:#141519; border:1px solid #3a3b45; border-radius:6px;
+    padding:5px 8px; color:#d5d6de; font-size:11.5px; outline:none; user-select:text; }
+  input[type=text]:focus { border-color:#4c8dff; }
+  .mini { height:24px; padding:0 9px; font-size:11px; }
+  #add-row { display:none; }
+  #add-row.open { display:flex; }
+  .sec { font-size:10.5px; color:#6a6b76; margin:8px 0 4px; letter-spacing:.5px;
+    display:flex; justify-content:space-between; align-items:center; }
+  .br { display:flex; align-items:center; gap:7px; padding:3px 7px; border-radius:5px;
+    cursor:pointer; font-family:Consolas,monospace; font-size:11px; }
+  .br:hover { background:#33343d; }
+  .br.cur { background:rgba(76,141,255,.15); }
+  .br .nm { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #branches { max-height:76px; overflow:auto; }
+  #conflicts { display:none; border:1px solid #a03030; background:rgba(160,48,48,.08);
+    border-radius:8px; padding:8px 10px; margin-bottom:6px; }
+  #conflicts.open { display:block; }
+  #conflicts .cf { color:#ff8a8a; font-size:11px; font-family:Consolas,monospace;
+    max-height:44px; overflow:auto; }
+  #conflicts .tip { color:#9a9ba6; font-size:10.5px; margin-top:5px; line-height:1.6; }
+  #result { background:#141519; border:1px solid #2c2d34; border-radius:6px; padding:7px 9px;
+    font-size:10.5px; font-family:Consolas,monospace; color:#9a9ba6; line-height:1.7;
+    max-height:64px; overflow:auto; user-select:text; }
+  #result .ok { color:#3fb950; } #result .err { color:#f85149; } #result .hd { color:#8ab8ff; }
+  #hist { font-size:10.5px; font-family:Consolas,monospace; color:#6a6b76; line-height:1.7;
+    max-height:56px; overflow:auto; user-select:text; }
+  #hist div { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .empty { color:#4a4b55; font-size:11px; text-align:center; padding:8px 0; }
+</style>
+</head>
+<body>
+  <div id="panel"></div>
+  <div id="strip">
+    <span id="branch">未配置<span class="dot clean"></span></span>
+    <button class="btn" id="pull" disabled>⬇ 拉取</button>
+    <button class="btn" id="push" disabled>⬆ 推送</button>
+  </div>
+<script>
+(async () => {
+  let cfg = await tbp.config();
+  const strip = document.getElementById('strip');
+  const branchEl = document.getElementById('branch');
+  const panel = document.getElementById('panel');
+  const btnPull = document.getElementById('pull');
+  const btnPush = document.getElementById('push');
+  let expanded = false, status = null, busy = false, hist = [], lastOutgoing = [];
+  // 添加仓库的输入状态：跨面板重绘保留，避免 30s 定时刷新把用户输入清掉
+  const addState = { open: false, path: '', name: '', err: '' };
+
+  const repo = () => cfg.repos && cfg.repos[cfg.activeRepo || 0];
+  const save = () => tbp.saveConfig(cfg);
+
+  // ---------------- 任务栏条 ----------------
+  function renderStrip() {
+    const r = repo();
+    if (!r) {
+      branchEl.innerHTML = '未配置仓库<span class="dot clean"></span>';
+      btnPull.disabled = btnPush.disabled = true;
+      return;
+    }
+    if (!status || !status.ok) {
+      branchEl.innerHTML = '仓库异常<span class="dot dirty"></span>';
+      btnPull.disabled = btnPush.disabled = true;
+      return;
+    }
+    const ab = (status.ahead ? ' ↑' + status.ahead : '') + (status.behind ? ' ↓' + status.behind : '');
+    branchEl.innerHTML = '';
+    const nm = document.createElement('span');
+    nm.textContent = ((status.branch || '(游离)') + ab).slice(0, 28);
+    const dot = document.createElement('span');
+    dot.className = 'dot ' + (status.dirty ? 'dirty' : 'clean');
+    dot.title = status.dirty ? '有未提交改动' : '工作区干净';
+    branchEl.append(nm, dot);
+    btnPull.disabled = btnPush.disabled = busy;
+  }
+
+  // ---------------- 弹出面板 ----------------
+  async function renderPanel() {
+    const r = repo();
+    if (!r) {
+      panel.innerHTML = '<div class="empty">尚未配置仓库。<br>点击下方 ＋ 直接添加本地仓库路径。</div>';
+      return;
+    }
+    const brs = await tbp.call('git.branches', { path: r.path });
+    const cfs = await tbp.call('git.conflicts', { path: r.path });
+    hist = await tbp.call('git.log', { path: r.path, n: 10 });
+    lastOutgoing = status && status.branch
+      ? await tbp.call('git.outgoing', { path: r.path, branch: status.branch }) : [];
+
+    panel.innerHTML = '';
+
+    // 仓库行 + 添加
+    const row = document.createElement('div'); row.className = 'row';
+    const sel = document.createElement('select');
+    (cfg.repos || []).forEach((rp, i) => {
+      const o = document.createElement('option');
+      o.value = i;
+      o.textContent = rp.name + ' — ' + rp.path;
+      if (i === (cfg.activeRepo || 0)) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.onchange = async () => { cfg.activeRepo = +sel.value; await save(); await refresh(); };
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn gray mini'; addBtn.textContent = '＋ 仓库';
+    addBtn.onclick = () => {
+      addState.open = !addState.open;
+      addRow.classList.toggle('open', addState.open);
+    };
+    row.append(sel, addBtn);
+    panel.appendChild(row);
+
+    const addRow = document.createElement('div');
+    addRow.id = 'add-row'; addRow.className = 'row';
+    if (addState.open) addRow.classList.add('open');
+    const pathIn = document.createElement('input');
+    pathIn.type = 'text'; pathIn.placeholder = '仓库路径，如 G:\\code\\myproj';
+    pathIn.value = addState.path;
+    pathIn.oninput = () => { addState.path = pathIn.value; addState.err = ''; renderAddErr(); };
+    const nameIn = document.createElement('input');
+    nameIn.type = 'text'; nameIn.placeholder = '名称(可选)'; nameIn.style.flex = '0 0 90px';
+    nameIn.value = addState.name;
+    nameIn.oninput = () => { addState.name = nameIn.value; };
+    const okBtn = document.createElement('button');
+    okBtn.className = 'btn green mini'; okBtn.textContent = '添加';
+    okBtn.onclick = async () => {
+      if (busy) return;
+      const p = pathIn.value.trim();
+      if (!p) { addState.err = '请先输入仓库路径'; renderAddErr(); return; }
+      busy = true; okBtn.disabled = true; okBtn.textContent = '检验中…';
+      try {
+        const st = await tbp.call('git.status', { path: p });
+        if (!st.ok) {
+          addState.err = '不是有效的 git 仓库：' + ((st.error || st.output || '').split('\n')[0]);
+          renderAddErr();
+          return;
+        }
+        cfg.repos = cfg.repos || [];
+        const nm = nameIn.value.trim() || p.split(/[\\/]/).filter(Boolean).pop();
+        cfg.repos.push({ name: nm, path: p });
+        cfg.activeRepo = cfg.repos.length - 1;
+        await save();
+        addState.open = false; addState.path = ''; addState.name = ''; addState.err = '';
+        await refresh(false);
+      } finally {
+        busy = false; okBtn.disabled = false; okBtn.textContent = '添加';
+      }
+    };
+    addRow.append(pathIn, nameIn, okBtn);
+    panel.appendChild(addRow);
+    const addErr = document.createElement('div');
+    addErr.id = 'add-err';
+    addErr.style.cssText = 'display:none;color:#ff8a8a;font-size:10.5px;margin:-2px 0 6px 4px;word-break:break-all;';
+    panel.appendChild(addErr);
+    renderAddErr();
+
+    // 分支列表
+    const bh = document.createElement('div'); bh.className = 'sec';
+    bh.innerHTML = '<span>分支（点击切换）</span>';
+    panel.appendChild(bh);
+    const list = document.createElement('div'); list.id = 'branches';
+    brs.forEach(b => {
+      const d = document.createElement('div');
+      d.className = 'br' + (b.current ? ' cur' : '');
+      d.innerHTML = '<span>⎇</span><span class="nm"></span>';
+      d.querySelector('.nm').textContent = b.name;
+      d.title = b.name;
+      d.onclick = async () => {
+        if (busy || b.current) return;
+        await run('切换 → ' + b.name, async () => {
+          const res = await tbp.call('git.switch', { path: r.path, branch: b.name });
+          if (!res.ok) throw new Error(res.output);
+          return '已切换到 ' + b.name;
+        });
+      };
+      list.appendChild(d);
+    });
+    panel.appendChild(list);
+
+    // 操作行
+    const acts = document.createElement('div'); acts.className = 'row';
+    acts.style.marginTop = '8px';
+    const p1 = document.createElement('button'); p1.className = 'btn mini'; p1.style.background = '#8a5a00';
+    p1.textContent = '⬇ Pull --rebase';
+    p1.onclick = doPull;
+    const p2 = document.createElement('button'); p2.className = 'btn mini'; p2.style.background = '#1f6feb';
+    p2.textContent = '⬆ Push' + (lastOutgoing.length ? ' (' + lastOutgoing.length + ')' : '');
+    p2.onclick = doPush;
+    const rf = document.createElement('button'); rf.className = 'btn gray mini'; rf.textContent = '⟳ 刷新';
+    rf.onclick = refresh;
+    acts.append(p1, p2, rf);
+    panel.appendChild(acts);
+
+    // 冲突面板
+    if (cfs.length) {
+      const cp = document.createElement('div'); cp.id = 'conflicts'; cp.className = 'open';
+      const h = document.createElement('div');
+      h.style.cssText = 'color:#ff8a8a;font-size:11.5px;margin-bottom:4px;';
+      h.textContent = '⚠ 发现 ' + cfs.length + ' 个冲突文件：';
+      const fl = document.createElement('div'); fl.className = 'cf';
+      cfs.forEach(f => { const d = document.createElement('div'); d.textContent = f; fl.appendChild(d); });
+      const btns = document.createElement('div'); btns.className = 'row'; btns.style.marginTop = '6px';
+      const cont = document.createElement('button'); cont.className = 'btn green mini';
+      cont.textContent = '继续（解决后）';
+      cont.onclick = () => run('rebase --continue', async () => {
+        const res = await tbp.call('git.continue', { path: r.path });
+        if (!res.ok) throw new Error(res.output);
+        return '已继续完成';
+      });
+      const ab = document.createElement('button'); ab.className = 'btn red mini';
+      ab.textContent = '中止合并';
+      ab.onclick = () => run('abort', async () => {
+        const res = await tbp.call('git.abort', { path: r.path });
+        if (!res.ok) throw new Error(res.output);
+        return '已中止，回到合并前状态';
+      });
+      btns.append(cont, ab);
+      const tip = document.createElement('div'); tip.className = 'tip';
+      tip.textContent = '处理方式：打开冲突文件，将 <<<<<<< ======= >>>>>>> 标记之间的内容改为最终代码，保存后执行 git add，再点「继续」。若想放弃本次合并，点「中止合并」。';
+      cp.append(h, fl, btns, tip);
+      panel.appendChild(cp);
+    }
+
+    // 结果区
+    const rh = document.createElement('div'); rh.className = 'sec';
+    rh.innerHTML = '<span>操作结果</span>';
+    panel.appendChild(rh);
+    const res = document.createElement('div'); res.id = 'result';
+    res.innerHTML = '<span class="hd">点击 Pull / Push 查看明细；推送前会列出将推送的提交。</span>';
+    panel.appendChild(res);
+
+    // 历史
+    const hh = document.createElement('div'); hh.className = 'sec';
+    hh.innerHTML = '<span>最近提交</span><span style="font-weight:normal">' + (status && status.branch ? status.branch : '') + '</span>';
+    panel.appendChild(hh);
+    const hl = document.createElement('div'); hl.id = 'hist';
+    if (hist.length) {
+      hist.forEach(l => { const d = document.createElement('div'); d.textContent = l; d.title = l; hl.appendChild(d); });
+    } else {
+      hl.innerHTML = '<div class="empty">暂无提交记录</div>';
+    }
+    panel.appendChild(hl);
+  }
+
+  function result(lines) {
+    const el = document.getElementById('result');
+    if (!el) return;
+    el.innerHTML = '';
+    lines.slice(0, 40).forEach(([text, cls]) => {
+      const d = document.createElement('div');
+      if (cls) d.className = cls;
+      d.textContent = text;
+      el.appendChild(d);
+    });
+    el.scrollTop = 0;
+  }
+
+  async function run(op, fn) {
+    if (busy) return;
+    busy = true; renderStrip();
+    try {
+      const msg = await fn();
+      result([[op + ' ✔ ' + msg, 'ok']]);
+    } catch (e) {
+      result([[op + ' ✖ 失败', 'err'], [String(e.message || e).split('\n')[0], 'err']]);
+    }
+    busy = false;
+    await refresh();
+  }
+
+  async function doPull() {
+    const r = repo(); if (!r || busy) return;
+    busy = true; renderStrip();
+    const res = await tbp.call('git.pull', { path: r.path });
+    const lines = [];
+    if (res.ok) {
+      lines.push(['Pull ✔ ' + (res.output.split('\n')[0] || '已是最新'), 'ok']);
+      const stat = await tbp.call('git.last_pull_stat', { path: r.path });
+      if (stat && stat.trim()) {
+        lines.push(['—— 拉到的改动 ——', 'hd']);
+        stat.trim().split('\n').slice(0, 12).forEach(l => lines.push([l]));
+      } else {
+        lines.push(['（无新内容）', 'hd']);
+      }
+    } else {
+      lines.push(['Pull ✖ 失败', 'err']);
+      res.output.split('\n').slice(0, 4).forEach(l => lines.push([l, 'err']));
+      const cfs = await tbp.call('git.conflicts', { path: r.path });
+      if (cfs.length) lines.push(['检测到 ' + cfs.length + ' 个冲突文件，请在上方冲突面板处理', 'err']);
+    }
+    busy = false;
+    result(lines);
+    await refresh();
+  }
+
+  async function doPush() {
+    const r = repo(); if (!r || busy) return;
+    const lines = [];
+    if (lastOutgoing.length) {
+      lines.push(['—— 将推送以下 ' + lastOutgoing.length + ' 条提交 ——', 'hd']);
+      lastOutgoing.slice(0, 10).forEach(l => lines.push([l]));
+    }
+    busy = true; renderStrip();
+    const res = await tbp.call('git.push', { path: r.path });
+    if (res.ok) {
+      lines.push(['Push ✔ 已推送' + (lastOutgoing.length ? ' ' + lastOutgoing.length + ' 条提交' : ''), 'ok']);
+      lines.push([res.output.split('\n')[0] || '']);
+    } else {
+      lines.push(['Push ✖ 被拒绝', 'err']);
+      res.output.split('\n').slice(0, 4).forEach(l => lines.push([l, 'err']));
+      lines.push(['提示：先 Pull（rebase）整合远端改动后再推', 'hd']);
+    }
+    busy = false;
+    result(lines);
+    await refresh();
+  }
+
+  function renderAddErr() {
+    const el = document.getElementById('add-err');
+    if (!el) return;
+    el.style.display = addState.err ? 'block' : 'none';
+    el.textContent = addState.err;
+  }
+
+  function panelBusy() {
+    if (addState.open || addState.path || addState.name) return true;
+    const ae = document.activeElement;
+    return !!(ae && panel.contains(ae));
+  }
+
+  async function refresh(fromTimer) {
+    const r = repo();
+    if (!r) { status = null; renderStrip(); if (expanded && !fromTimer) await renderPanel(); return; }
+    status = await tbp.call('git.status', { path: r.path });
+    renderStrip();
+    // 定时刷新时若用户正在面板里输入，跳过重绘以免清空其输入
+    if (expanded && !(fromTimer && panelBusy())) await renderPanel();
+  }
+
+  btnPull.onclick = e => { e.stopPropagation(); doPull(); };
+  btnPush.onclick = e => { e.stopPropagation(); doPush(); };
+
+  strip.onclick = async () => {
+    expanded = !expanded;
+    panel.classList.toggle('open', expanded);
+    await tbp.call(expanded ? 'dock.expand' : 'dock.collapse', { height: 352 });
+    if (expanded) await renderPanel();
+  };
+  // 宿主因切换其他插件而收起本弹层时，同步本地状态，避免再次点击失步
+  tbp.on('dock.collapsed', () => {
+    expanded = false;
+    panel.classList.remove('open');
+  });
+
+  await refresh(false);
+  setInterval(() => refresh(true), 30000);
+  tbp.ready();
+})();
+</script>
+</body>
+</html>

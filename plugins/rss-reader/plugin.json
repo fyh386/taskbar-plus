@@ -1,0 +1,17 @@
+{
+  "id": "builtin.rss-reader",
+  "name": "RSS 订阅",
+  "version": "1.0.0",
+  "author": "TaskBar Plus",
+  "description": "RSS/Atom 订阅聚合：轮询抓取，条上滚动头条，面板浏览全部",
+  "permissions": ["network", "shell"],
+  "width": { "min": 140, "max": 360, "default": 200 },
+  "config": {
+    "feeds": [
+      { "name": "少数派", "url": "https://sspai.com/feed" },
+      { "name": "Hacker News", "url": "https://news.ycombinator.com/rss" }
+    ],
+    "intervalMin": 30,
+    "maxItems": 40
+  }
+}

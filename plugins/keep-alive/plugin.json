@@ -1,0 +1,15 @@
+{
+  "id": "builtin.keep-alive",
+  "name": "保活请求",
+  "version": "1.0.0",
+  "author": "TaskBar Plus",
+  "description": "定时发起 HTTP 请求，保活 VPN/代理连接，防止长时间无流量自动断连",
+  "permissions": ["network"],
+  "width": { "min": 60, "max": 130, "default": 100 },
+  "config": {
+    "url": "https://www.baidu.com",
+    "intervalSec": 300,
+    "timeoutSec": 10,
+    "running": true
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "builtin.proxy-capture",
+  "name": "抓包代理",
+  "version": "1.0.0",
+  "author": "TaskBar Plus",
+  "description": "本地 MITM 抓包：类似 Fiddler 的系统代理抓包，HTTPS 解密，支持筛选与详情查看",
+  "permissions": ["proxy"],
+  "width": { "min": 130, "max": 260, "default": 150 },
+  "config": {
+    "port": 8899
+  }
+}

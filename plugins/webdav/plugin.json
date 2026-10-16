@@ -1,0 +1,14 @@
+{
+  "id": "builtin.webdav",
+  "name": "网盘 WebDAV",
+  "version": "1.0.0",
+  "author": "TaskBar Plus",
+  "description": "WebDAV 网盘管理：浏览目录、拖拽上传、下载与整理",
+  "permissions": ["network", "fs"],
+  "width": { "min": 160, "max": 400, "default": 200 },
+  "config": {
+    "url": "",
+    "user": "",
+    "pass": ""
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "TaskBar Plus",
+  "version": "0.1.0",
+  "identifier": "com.taskbarplus.app",
+  "build": {
+    "frontendDist": "../ui",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": ""
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "dock",
+        "title": "TaskBar Plus",
+        "width": 640,
+        "height": 48,
+        "minWidth": 120,
+        "minHeight": 48,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "focus": false
+      },
+      {
+        "label": "settings",
+        "title": "TaskBar Plus 设置",
+        "width": 880,
+        "height": 580,
+        "minWidth": 720,
+        "minHeight": 500,
+        "resizable": true,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": "all",
+    "icon": []
+  }
+}

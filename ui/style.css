@@ -1,0 +1,185 @@
+/* TaskBar Plus 全局样式 */
+* { margin:0; padding:0; box-sizing:border-box; font-family:"Segoe UI","Microsoft YaHei",sans-serif; user-select:none; }
+svg { width:1em; height:1em; stroke:currentColor; fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+button { font-family:inherit; }
+
+/* ============ dock ============ */
+#dock-root { height:100vh; }
+body.dock-mode { background:transparent; overflow:hidden; }
+/* 背景用 ::before 只画底部 48px 条带：插件弹层区域窗口保持透明，避免“黑框大于内容” */
+#dock { position:relative; display:flex; align-items:flex-end; justify-content:flex-end; height:100vh; }
+#strip-bar { position:relative; display:flex; align-items:flex-end; }
+#strip-bar::before { content:''; position:absolute; left:0; right:0; bottom:0; height:var(--tb-h,48px);
+  background-color:var(--dock-bg, rgba(31,32,37,0.92)); border-radius:8px;
+  background-image:var(--dock-bg-img, none); background-size:cover; background-position:center; }
+#plugin-row { position:relative; z-index:1; display:flex; align-items:flex-end; gap:var(--spacing,8px);
+  min-height:var(--tb-h,48px); }
+/* expanded iframe fills row height; --tb-h = taskbar height (JS) */
+/* --tb-h set from JS = actual taskbar height */
+/* 卡片壳：纯透明定位盒（弹出层 absolute 锚定用）。视觉样式在各插件自己的 #strip 上 */
+.plg-card { position:relative; flex-shrink:0; }
+.plg-card iframe { position:relative; z-index:1; display:block; width:100%; height:100%;
+  border:none; background:transparent; overflow:hidden; }
+.plg-card.collapsed { display:none; }
+#dock-tail { position:relative; z-index:2; display:flex; align-items:center; gap:4px; padding:0 4px 0 6px; height:var(--tb-h,48px); }
+/* 超长按住拖拽平移：拖尾区/卡片间距/左侧把手均可发起（卡片内的点击被 iframe 接收，
+   天然不会误触发）；拖动中 iframe 临时 pointer-events:none，让移动事件回到宿主 */
+body.panning { cursor:grabbing; }
+body.panning .plg-card iframe { pointer-events:none; }
+#dock.pannable #plugin-row { cursor:grab; }
+#dock.pannable #dock-tail { cursor:grab; }
+#dock.panning #plugin-row, #dock.panning #dock-tail { cursor:grabbing; }
+#pan-grip { display:none; position:absolute; left:0; bottom:0; z-index:3; width:12px; height:var(--tb-h,48px);
+  cursor:grab; align-items:center; justify-content:center; color:#5c5d68; font-size:10px; letter-spacing:1px;
+  background:linear-gradient(90deg, rgba(0,0,0,.28), transparent); border-radius:8px 0 0 8px; }
+#dock.pannable #pan-grip { display:flex; }
+.tail-btn { width:28px; height:32px; border:none; background:transparent; color:#7c7d88; border-radius:6px;
+  cursor:pointer; font-size:14px; display:flex; align-items:center; justify-content:center; }
+.tail-btn:hover { background:#2c2d36; color:#d5d6de; }
+#dock.more-hidden #plugin-row { display:none; }
+#btn-more { width:auto; padding:0 10px; font-size:12px; }
+
+/* ============ 设置中心 ============ */
+body.settings-mode { background:#151619; color:#e6e7ec; overflow:hidden; }
+#settings-root { height:100vh; }
+#sw { display:flex; height:100vh; }
+#sw-nav { width:190px; background:#1a1b20; border-right:1px solid #2c2d34; padding:16px 10px; flex-shrink:0; overflow:auto; }
+.brand { display:flex; align-items:center; gap:10px; padding:4px 10px 18px; }
+.brand-logo { width:30px; height:30px; border-radius:8px; background:linear-gradient(135deg,#4c8dff,#7c5cff);
+  display:flex; align-items:center; justify-content:center; color:#fff; font-size:16px; }
+.brand-name { font-size:13.5px; font-weight:600; color:#fff; }
+.brand-sub { font-size:10.5px; color:#6a6b76; }
+.nav-item { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:8px;
+  font-size:12.5px; color:#9a9ba6; cursor:pointer; margin-bottom:2px; }
+.nav-item svg { width:16px; height:16px; }
+.nav-item:hover { background:#232429; color:#e6e7ec; }
+.nav-item.on { background:rgba(76,141,255,.14); color:#fff; }
+.nav-item.on svg { color:#4c8dff; }
+.nav-sec { font-size:10.5px; color:#4a4b55; padding:16px 12px 6px; letter-spacing:1px; }
+#sw-content { flex:1; padding:24px 28px; overflow:auto; }
+body.settings-mode #sw-nav, body.settings-mode #sw-content { scrollbar-width:none; }
+body.settings-mode #sw-nav::-webkit-scrollbar, body.settings-mode #sw-content::-webkit-scrollbar { display:none; width:0; height:0; }
+.sw-page { display:none; } .sw-page.on { display:block; }
+.sec-title { font-size:16px; color:#fff; margin-bottom:4px; }
+.sec-desc { font-size:11.5px; color:#6a6b76; margin-bottom:20px; }
+
+/* 插件管理 */
+/* 插件管理页卡片（设置中心） */
+.mgr-card { background:#1e1f24; border:1px solid #2c2d34; border-radius:10px; padding:14px 16px;
+  margin-bottom:10px; display:flex; align-items:center; gap:14px; }
+.mgr-card .pc-ico { width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center;
+  font-size:15px; flex-shrink:0; }
+.pc-info { flex:1; min-width:0; }
+.pc-name { font-size:13px; color:#fff; display:flex; align-items:center; gap:8px; }
+.pc-ver { font-size:10px; color:#6a6b76; background:#141519; padding:1px 7px; border-radius:8px; }
+.pc-author { font-size:11px; color:#6a6b76; margin-top:2px; }
+.pc-width { display:flex; align-items:center; gap:8px; font-size:11px; color:#6a6b76; width:170px; flex-shrink:0; }
+.pc-width input { flex:1; accent-color:#4c8dff; }
+.mini-btn { padding:6px 11px; border-radius:6px; border:1px solid #2c2d34; background:#141519; color:#9a9ba6;
+  font-size:11.5px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; }
+.mini-btn:hover { color:#fff; border-color:#4c8dff; }
+.mini-btn.danger:hover { color:#ff6b6b; border-color:#ff6b6b; }
+.toggle { width:36px; height:20px; border-radius:10px; background:#3a3b45; position:relative; cursor:pointer;
+  transition:background .2s; flex-shrink:0; }
+.toggle::after { content:''; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%;
+  background:#fff; transition:left .2s; }
+.toggle.on { background:#4c8dff; } .toggle.on::after { left:18px; }
+
+/* 市场 */
+.mk-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px; }
+.mk-card { background:#1e1f24; border:1px solid #2c2d34; border-radius:10px; padding:15px; }
+.mk-head { display:flex; gap:10px; align-items:center; margin-bottom:8px; }
+.mk-name { font-size:13px; color:#fff; } .mk-by { font-size:10.5px; color:#6a6b76; }
+.mk-desc { font-size:11.5px; color:#9a9ba6; line-height:1.6; margin-bottom:12px; min-height:36px; }
+.mk-meta { display:flex; gap:10px; font-size:10.5px; color:#6a6b76; margin-bottom:12px; }
+.mk-install { width:100%; height:30px; border:none; border-radius:7px; background:rgba(76,141,255,.14);
+  color:#4c8dff; font-size:12px; cursor:pointer; }
+.mk-install:hover { background:#4c8dff; color:#fff; }
+.mk-install:disabled { background:#141519; color:#4a4b55; cursor:default; }
+.mk-search { display:flex; gap:8px; margin-bottom:14px; max-width:480px; }
+.mk-search input { flex:1; background:#141519; border:1px solid #2c2d34; border-radius:8px; padding:8px 12px;
+  color:#e6e7ec; font-size:12px; outline:none; user-select:text; }
+
+/* 导入 */
+.drop-zone { border:2px dashed #2c2d34; border-radius:12px; padding:40px; text-align:center; color:#6a6b76;
+  font-size:12.5px; margin-bottom:20px; cursor:pointer; transition:all .15s; max-width:560px; }
+.drop-zone:hover { border-color:#4c8dff; color:#4c8dff; background:rgba(76,141,255,.05); }
+.drop-zone .dz-ico { width:36px; height:36px; margin-bottom:12px; color:#4a4b55; }
+.drop-zone b { color:#e6e7ec; }
+.code-block { background:#141519; border:1px solid #2c2d34; border-radius:10px; padding:14px 16px;
+  font-family:Consolas,monospace; font-size:11.5px; line-height:1.8; color:#b6c6e2; user-select:text; max-width:560px; white-space:pre-wrap; }
+
+/* 通用设置 */
+.set-row { display:flex; align-items:center; padding:13px 2px; border-bottom:1px solid #1e1f24; font-size:12.5px; max-width:640px; }
+.sr-label { flex:1; color:#e6e7ec; }
+.sr-label small { display:block; color:#6a6b76; font-size:11px; margin-top:2px; }
+.set-row select, .set-row input[type=text] { background:#141519; border:1px solid #2c2d34; color:#e6e7ec;
+  border-radius:7px; padding:6px 10px; font-size:12px; outline:none; min-width:150px; user-select:text; }
+.set-row input[type=range] { width:160px; accent-color:#4c8dff; }
+.hotkey { background:#141519; border:1px solid #2c2d34; border-radius:7px; padding:6px 12px;
+  color:#e6e7ec; font-size:12px; font-family:Consolas,monospace; }
+/* 背景设置控件 */
+.set-row input[type=color] { width:46px; height:28px; padding:1px 2px; background:#141519;
+  border:1px solid #2c2d34; border-radius:7px; cursor:pointer; }
+.bg-preview { width:110px; height:32px; border-radius:7px; border:1px solid #2c2d34;
+  background-color:#1f2025; background-size:cover; background-position:center; flex-shrink:0; }
+
+/* 关于 */
+.about-wrap { max-width:420px; margin:30px auto 0; text-align:center; }
+.about-logo { width:64px; height:64px; border-radius:16px; margin:0 auto 14px;
+  background:linear-gradient(135deg,#4c8dff,#7c5cff); display:flex; align-items:center; justify-content:center;
+  color:#fff; font-size:30px; box-shadow:0 8px 24px rgba(76,141,255,.3); }
+.about-name { font-size:18px; color:#fff; font-weight:600; }
+.about-ver { font-size:11.5px; color:#6a6b76; margin:5px 0 20px; }
+.about-grid { text-align:left; margin-top:8px; }
+.btn-primary { padding:7px 18px; border:none; border-radius:7px; background:#4c8dff; color:#fff; font-size:12px; cursor:pointer; }
+.btn-primary:hover { filter:brightness(1.15); }
+
+/* JSON 配置弹窗 */
+#json-modal, #css-modal { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:500; display:flex; align-items:center; justify-content:center; }
+#json-modal[hidden], #css-modal[hidden] { display:none; }
+.json-box { width:520px; background:#1e1f24; border:1px solid #2c2d34; border-radius:12px; overflow:hidden;
+  box-shadow:0 16px 60px rgba(0,0,0,.6); }
+.jb-head { padding:13px 16px; border-bottom:1px solid #2c2d34; display:flex; align-items:center;
+  font-size:13px; color:#fff; background:#1a1b20; }
+.jb-head .mini-btn { margin-left:auto; }
+.jb-body { padding:14px 16px; }
+.jb-tip { font-size:11px; color:#6a6b76; margin-bottom:10px; }
+#json-editor { width:100%; height:280px; background:#141519; border:1px solid #2c2d34; border-radius:8px;
+  color:#b6c6e2; font-family:Consolas,monospace; font-size:11.5px; line-height:1.7; padding:12px; outline:none;
+  resize:none; user-select:text; }
+.jb-err { color:#ff6b6b; font-size:11.5px; margin-top:8px; min-height:16px; }
+#css-editor { width:100%; height:280px; background:#141519; border:1px solid #2c2d34; border-radius:8px;
+  color:#b6c6e2; font-family:Consolas,monospace; font-size:11.5px; line-height:1.7; padding:12px; outline:none;
+  resize:none; user-select:text; }
+textarea.css-ta { flex:1.2; height:88px; background:#141519; border:1px solid #2c2d34; border-radius:8px;
+  color:#b6c6e2; font-family:Consolas,monospace; font-size:11.5px; line-height:1.6; padding:10px; outline:none;
+  resize:vertical; user-select:text; }
+.jb-foot { padding:12px 16px; display:flex; justify-content:flex-end; gap:8px; border-top:1px solid #2c2d34; }
+
+.empty-hint { color:#4a4b55; font-size:12px; text-align:center; padding:40px 0; }
+.toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#2c2d36; color:#fff;
+  padding:9px 18px; border-radius:8px; font-size:12px; z-index:600; box-shadow:0 6px 24px rgba(0,0,0,.4); }
+
+/* dock 右键菜单 */
+#ctx-menu { display:none; position:fixed; bottom:calc(var(--tb-h,48px) + 4px); width:160px; background:#232429;
+  border:1px solid #3a3b45; border-radius:8px; padding:5px; z-index:1000;
+  box-shadow:0 8px 28px rgba(0,0,0,.5); }
+.ctx-item { padding:8px 12px; border-radius:5px; font-size:12px; color:#d5d6de; cursor:pointer; }
+.ctx-item:hover { background:#4c8dff; color:#fff; }
+.ctx-item.ctx-danger:hover { background:#d64545; }
+.ctx-sep { height:1px; background:#3a3b45; margin:4px 8px; }
+
+/* 插件市场：地址栏 / 状态 / 截图 / 权限徽章 */
+.mk-bar { display:flex; gap:6px; margin:10px 0 8px; }
+.mk-bar input { flex:1; background:#14151a; border:1px solid #2c2d34; color:#dfe0e6;
+  border-radius:8px; padding:7px 10px; font-size:12px; outline:none; }
+.mk-bar input:focus { border-color:#4c8dff; }
+.mk-status { font-size:11.5px; color:#9a9ba6; margin:4px 0 8px; min-height:14px; }
+.mk-shot { width:100%; height:96px; object-fit:cover; border-radius:6px;
+  margin-bottom:8px; background:#14151a; }
+.mk-perm { font-size:10px; color:#8ab4ff; background:rgba(76,141,255,.12);
+  border-radius:4px; padding:1px 5px; }
+.mk-home { font-size:10.5px; color:#6ee7a0; text-decoration:none; margin-left:auto; }
+.mk-home:hover { text-decoration:underline; }
+.pc-meta { font-size:10.5px; color:#6a6b76; margin-top:3px; }

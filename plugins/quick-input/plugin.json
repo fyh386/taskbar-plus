@@ -1,0 +1,28 @@
+{
+  "id": "builtin.quick-input",
+  "name": "快捷输入",
+  "version": "1.0.0",
+  "author": "TaskBar Plus",
+  "description": "回车一键翻译，Ctrl+回车/按钮问 AI",
+  "permissions": ["network", "shell", "fs"],
+  "width": { "min": 200, "max": 520, "default": 360 },
+  "config": {
+    "translate": {
+      "sourceLang": "auto",
+      "targetLang": "zh-CN",
+      "provider": "auto"
+    },
+    "ai": {
+      "provider": "deepseek",
+      "apiKey": "",
+      "baseUrl": "https://api.deepseek.com/v1",
+      "model": "deepseek-chat"
+    },
+    "aiProviders": [
+      { "name": "Google", "url": "https://www.google.com/search?q={q}" },
+      { "name": "Bing", "url": "https://www.bing.com/search?q={q}" },
+      { "name": "DeepSeek 网页", "url": "https://chat.deepseek.com/" }
+    ],
+    "aiDefault": 0
+  }
+}

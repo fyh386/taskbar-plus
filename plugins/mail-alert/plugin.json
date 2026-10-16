@@ -1,0 +1,17 @@
+{
+  "id": "builtin.mail-alert",
+  "name": "邮件提醒",
+  "version": "1.0.0",
+  "author": "TaskBar Plus",
+  "description": "IMAP 未读邮件提醒：QQ/163/Gmail 授权码登录，定时轮询未读数",
+  "permissions": ["network", "shell"],
+  "width": { "min": 120, "max": 260, "default": 150 },
+  "config": {
+    "host": "",
+    "port": 993,
+    "user": "",
+    "pass": "",
+    "folder": "INBOX",
+    "intervalMin": 5
+  }
+}

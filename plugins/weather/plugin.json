@@ -1,0 +1,10 @@
+{
+  "id": "builtin.weather",
+  "name": "天气",
+  "version": "1.0.0",
+  "author": "TaskBar Plus",
+  "description": "当前城市天气（wttr.in，默认禁用）",
+  "permissions": ["network"],
+  "width": { "min": 70, "max": 220, "default": 110 },
+  "config": { "city": "" }
+}

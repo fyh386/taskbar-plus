@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { background:transparent; font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+  body { display:flex; flex-direction:column; justify-content:flex-end; height:100vh; overflow:hidden; }
+  #strip { height:40px; display:flex; align-items:center; gap:8px; padding:0 10px; cursor:pointer;
+    overflow:hidden; white-space:nowrap; flex-shrink:0;
+    background:#2b2c33; border:1px solid #41424d; border-radius:7px; }
+  #strip .ic { color:#6ee7a0; display:flex; flex-shrink:0; }
+  #strip .lb { font-size:11.5px; color:#c8cad4; }
+  #panel { display:none; background:#1e1f24; border:1px solid #3a3b45; border-radius:10px;
+    margin:4px 4px 6px; width:300px; flex-shrink:0; flex-direction:column; overflow:hidden; }
+  #panel.open { display:flex; }
+  .tabs { display:flex; flex-wrap:wrap; gap:4px; padding:8px 9px; border-bottom:1px solid #2c2d34; flex-shrink:0; }
+  .tabs button { height:22px; padding:0 8px; border:1px solid #3a3b45; border-radius:6px; background:#141519;
+    color:#9a9ba6; font-size:10.5px; cursor:pointer; }
+  .tabs button.on { border-color:#4c8dff; color:#8ab8ff; }
+  .bd { padding:10px; display:flex; flex-direction:column; gap:7px; }
+  textarea, .mono-in { width:100%; background:#141519; border:1px solid #2c2d34; border-radius:6px;
+    color:#b6c6e2; font-family:Consolas,monospace; font-size:11px; padding:8px; outline:none; resize:none; }
+  textarea { height:88px; }
+  .mono-in { height:28px; }
+  .rw { display:flex; gap:6px; }
+  .rw button { flex:1; height:26px; border:1px solid #3a3b45; border-radius:6px; background:#141519;
+    color:#9ab8e8; font-size:11px; cursor:pointer; }
+  .rw button:hover { border-color:#4c8dff; color:#fff; }
+  .out { min-height:26px; max-height:110px; overflow-y:auto; background:#141519; border:1px solid #2c2d34;
+    border-radius:6px; padding:7px 8px; font-family:Consolas,monospace; font-size:10.5px; color:#9fd0a8;
+    white-space:pre-wrap; word-break:break-all; line-height:1.6; }
+  .out::-webkit-scrollbar { width:0; }
+  .out.err { color:#f85149; }
+  .msg { font-size:10.5px; color:#6a6b76; }
+  .kv { display:flex; justify-content:space-between; font-size:11px; color:#9a9ba6; }
+  .kv b { color:#d5d6de; font-family:Consolas,monospace; font-weight:500; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <div class="tabs" id="tabs"></div>
+    <div class="bd" id="bd"></div>
+  </div>
+  <div id="strip" title="点击打开工具箱">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/></svg></span>
+    <span class="lb">webtool</span>
+  </div>
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  const strip = $('strip'), panel = $('panel');
+  let expanded = false;
+
+  const ta = (id, ph) => '<textarea id="' + id + '" spellcheck="false" placeholder="' + ph + '"></textarea>';
+  const out = (id) => '<div class="out" id="' + id + '"></div>';
+  const btns = (list) => '<div class="rw">' + list.map(b =>
+    '<button data-a="' + b.a + '">' + b.t + '</button>').join('') + '</div>';
+
+  const setOut = (id, text, isErr) => {
+    const el = $(id);
+    el.textContent = text;
+    el.className = 'out' + (isErr ? ' err' : '');
+  };
+  const getIn = (id) => ($(id).value || '').trim();
+  const b64e = (s) => btoa(String.fromCharCode.apply(null, new TextEncoder().encode(s)));
+  const b64d = (s) => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\s+/g, '')), c => c.charCodeAt(0)));
+
+  const TOOLS = [
+    { id: 'json', name: 'JSON', html: ta('i-json', '粘贴 JSON') + btns([{ a: 'fmt', t: '格式化' }, { a: 'min', t: '压缩' }, { a: 'val', t: '校验' }]) + out('o-json'),
+      run(a) {
+        const raw = getIn('i-json');
+        if (!raw) return;
+        try {
+          const v = JSON.parse(raw);
+          if (a === 'min') setOut('o-json', JSON.stringify(v));
+          else if (a === 'val') setOut('o-json', '✓ 合法 JSON');
+          else setOut('o-json', JSON.stringify(v, null, 2));
+        } catch (e) { setOut('o-json', '✗ ' + e.message, true); }
+      } },
+    { id: 'url', name: 'URL', html: ta('i-url', '待处理文本') + btns([{ a: 'enc', t: '编码' }, { a: 'dec', t: '解码' }]) + out('o-url'),
+      run(a) {
+        try {
+          setOut('o-url', a === 'enc' ? encodeURIComponent(getIn('i-url')) : decodeURIComponent(getIn('i-url')));
+        } catch (e) { setOut('o-url', '✗ ' + e.message, true); }
+      } },
+    { id: 'b64', name: 'Base64', html: ta('i-b64', '待处理文本') + btns([{ a: 'enc', t: '编码' }, { a: 'dec', t: '解码' }]) + out('o-b64'),
+      run(a) {
+        try {
+          setOut('o-b64', a === 'enc' ? b64e(getIn('i-b64')) : b64d(getIn('i-b64')));
+        } catch (e) { setOut('o-b64', '✗ 解码失败（非合法 Base64）', true); }
+      } },
+    { id: 'ts', name: '时间戳', html:
+      '<div class="kv"><span>当前 Unix 秒</span><b id="ts-now"></b></div>' +
+      '<input class="mono-in" id="i-ts" placeholder="Unix 秒/毫秒 或 2024-01-01 12:00:00">' +
+      btns([{ a: 'toDate', t: '→ 日期' }, { a: 'toTs', t: '→ 时间戳' }]) + out('o-ts'),
+      run(a) {
+        const v = getIn('i-ts');
+        if (a === 'toDate') {
+          let n = +v;
+          if (!isFinite(n) || !v) { setOut('o-ts', '✗ 请输入数字时间戳', true); return; }
+          if (v.length >= 13) n = Math.floor(n / 1000);
+          setOut('o-ts', new Date(n * 1000).toLocaleString('zh-CN', { hour12: false }) + '\nUTC: ' + new Date(n * 1000).toISOString());
+        } else {
+          const n = v ? Date.parse(v.replace(' ', 'T')) : Date.now();
+          if (!isFinite(n)) { setOut('o-ts', '✗ 日期解析失败', true); return; }
+          setOut('o-ts', '秒: ' + Math.floor(n / 1000) + '\n毫秒: ' + n);
+        }
+      },
+      tick() { const el = $('ts-now'); if (el) el.textContent = Math.floor(Date.now() / 1000); } },
+    { id: 'hash', name: '哈希', html: ta('i-hash', '待计算文本') + btns([{ a: 'md5', t: 'MD5' }, { a: 's1', t: 'SHA-1' }, { a: 's256', t: 'SHA-256' }]) + out('o-hash'),
+      async run(a) {
+        const data = new TextEncoder().encode(getIn('i-hash'));
+        if (a === 'md5') {
+          // WebView2 无 MD5，用现成纯 JS 实现
+          setOut('o-hash', md5(data));
+          return;
+        }
+        const buf = await crypto.subtle.digest(a === 's1' ? 'SHA-1' : 'SHA-256', data);
+        setOut('o-hash', Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join(''));
+      } },
+    { id: 'pwd', name: '密码', html:
+      '<div class="kv"><span>长度</span><b id="p-len-v">16</b></div>' +
+      '<input type="range" id="p-len" min="6" max="48" value="16" style="width:100%;accent-color:#4c8dff">' +
+      btns([{ a: 'gen', t: '生成随机密码' }]) + out('o-pwd'),
+      run() {
+        const n = +$('p-len').value;
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%^&*-_=+';
+        const arr = new Uint32Array(n);
+        crypto.getRandomValues(arr);
+        setOut('o-pwd', Array.from(arr, x => chars[x % chars.length]).join(''));
+      },
+      tick() { const l = $('p-len'); if (l) $('p-len-v').textContent = l.value; } },
+    { id: 'uuid', name: 'UUID', html: btns([{ a: 'v4', t: '生成 UUID v4' }, { a: 'nano', t: '生成 NanoID' }]) + out('o-uuid'),
+      run(a) {
+        if (a === 'v4') {
+          setOut('o-uuid', crypto.randomUUID());
+        } else {
+          const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
+          const arr = new Uint8Array(21);
+          crypto.getRandomValues(arr);
+          setOut('o-uuid', Array.from(arr, x => chars[x % 64]).join(''));
+        }
+      } },
+  ];
+
+  // 紧凑 MD5（RFC 1321 最小实现）
+  function md5(input) {
+    const s = Array.from(input, b => b.toString(16).padStart(2, '0')).join('');
+    function rl(v, c) { return (v << c) | (v >>> (32 - c)); }
+    function add(a, b) { return (a + b) & 0xffffffff; }
+    function cmn(q, a, b, x, s2, t) { return add(rl(add(add(a, q), add(x, t)), s2), b); }
+    function ff(a, b, c, d, x, s2, t) { return cmn((b & c) | (~b & d), a, b, x, s2, t); }
+    function gg(a, b, c, d, x, s2, t) { return cmn((b & d) | (c & ~d), a, b, x, s2, t); }
+    function hh(a, b, c, d, x, s2, t) { return cmn(b ^ c ^ d, a, b, x, s2, t); }
+    function ii(a, b, c, d, x, s2, t) { return cmn(c ^ (b | ~d), a, b, x, s2, t); }
+    function hex(n) { let s2 = '', i2; for (i2 = 0; i2 < 4; i2++) s2 += ('0' + ((n >> (i2 * 8)) & 0xff).toString(16)).slice(-2); return s2; }
+    const x = [];
+    const nBits = s.length * 8;
+    for (let i2 = 0; i2 < s.length; i2++) x[i2 >> 2] = (x[i2 >> 2] || 0) | ((s.charCodeAt(i2) & 0xff) << ((i2 % 4) * 8));
+    x[s.length >> 2] = (x[s.length >> 2] || 0) | (0x80 << ((s.length % 4) * 8));
+    const lenPos = (((s.length + 8) >> 6) * 16) + 14;
+    x[lenPos] = nBits & 0xffffffff;
+    x[lenPos + 1] = Math.floor(nBits / 0x100000000);
+    let a = 1732584193, b = -271733879, c = -1732584194, d = 271733878;
+    for (let i2 = 0; i2 < x.length; i2 += 16) {
+      const oa = a, ob = b, oc = c, od = d;
+      a = ff(a, b, c, d, x[i2] || 0, 7, -680876936); d = ff(d, a, b, c, x[i2 + 1] || 0, 12, -389564586);
+      c = ff(c, d, a, b, x[i2 + 2] || 0, 17, 606105819); b = ff(b, c, d, a, x[i2 + 3] || 0, 22, -1044525330);
+      a = ff(a, b, c, d, x[i2 + 4] || 0, 7, -176418897); d = ff(d, a, b, c, x[i2 + 5] || 0, 12, 1200080426);
+      c = ff(c, d, a, b, x[i2 + 6] || 0, 17, -1473231341); b = ff(b, c, d, a, x[i2 + 7] || 0, 22, -45705983);
+      a = ff(a, b, c, d, x[i2 + 8] || 0, 7, 1770035416); d = ff(d, a, b, c, x[i2 + 9] || 0, 12, -1958414417);
+      c = ff(c, d, a, b, x[i2 + 10] || 0, 17, -42063); b = ff(b, c, d, a, x[i2 + 11] || 0, 22, -1990404162);
+      a = ff(a, b, c, d, x[i2 + 12] || 0, 7, 1804603682); d = ff(d, a, b, c, x[i2 + 13] || 0, 12, -40341101);
+      c = ff(c, d, a, b, x[i2 + 14] || 0, 17, -1502002290); b = ff(b, c, d, a, x[i2 + 15] || 0, 22, 1236535329);
+      a = gg(a, b, c, d, x[i2 + 1] || 0, 5, -165796510); d = gg(d, a, b, c, x[i2 + 6] || 0, 9, -1069501632);
+      c = gg(c, d, a, b, x[i2 + 11] || 0, 14, 643717713); b = gg(b, c, d, a, x[i2] || 0, 20, -373897302);
+      a = gg(a, b, c, d, x[i2 + 5] || 0, 5, -701558691); d = gg(d, a, b, c, x[i2 + 10] || 0, 9, 38016083);
+      c = gg(c, d, a, b, x[i2 + 15] || 0, 14, -660478335); b = gg(b, c, d, a, x[i2 + 4] || 0, 20, -405537848);
+      a = gg(a, b, c, d, x[i2 + 9] || 0, 5, 568446438); d = gg(d, a, b, c, x[i2 + 14] || 0, 9, -1019803690);
+      c = gg(c, d, a, b, x[i2 + 3] || 0, 14, -187363961); b = gg(b, c, d, a, x[i2 + 8] || 0, 20, 1163531501);
+      a = gg(a, b, c, d, x[i2 + 13] || 0, 5, -1444681467); d = gg(d, a, b, c, x[i2 + 2] || 0, 9, -51403784);
+      c = gg(c, d, a, b, x[i2 + 7] || 0, 14, 1735328473); b = gg(b, c, d, a, x[i2 + 12] || 0, 20, -1926607734);
+      a = hh(a, b, c, d, x[i2 + 5] || 0, 4, -378558); d = hh(d, a, b, c, x[i2 + 8] || 0, 11, -2022574463);
+      c = hh(c, d, a, b, x[i2 + 11] || 0, 16, 1839030562); b = hh(b, c, d, a, x[i2 + 14] || 0, 23, -35309556);
+      a = hh(a, b, c, d, x[i2 + 1] || 0, 4, -1530992060); d = hh(d, a, b, c, x[i2 + 4] || 0, 11, 1272893353);
+      c = hh(c, d, a, b, x[i2 + 7] || 0, 16, -155497632); b = hh(b, c, d, a, x[i2 + 10] || 0, 23, -1094730640);
+      a = hh(a, b, c, d, x[i2 + 13] || 0, 4, 681279174); d = hh(d, a, b, c, x[i2] || 0, 11, -358537222);
+      c = hh(c, d, a, b, x[i2 + 3] || 0, 16, -722521979); b = hh(b, c, d, a, x[i2 + 6] || 0, 23, 76029189);
+      a = hh(a, b, c, d, x[i2 + 9] || 0, 4, -640364487); d = hh(d, a, b, c, x[i2 + 12] || 0, 11, -421815835);
+      c = hh(c, d, a, b, x[i2 + 15] || 0, 16, 530742520); b = hh(b, c, d, a, x[i2 + 2] || 0, 23, -995338651);
+      a = ii(a, b, c, d, x[i2] || 0, 6, -198630844); d = ii(d, a, b, c, x[i2 + 7] || 0, 10, 1126891415);
+      c = ii(c, d, a, b, x[i2 + 14] || 0, 15, -1416354905); b = ii(b, c, d, a, x[i2 + 5] || 0, 21, -57434055);
+      a = ii(a, b, c, d, x[i2 + 12] || 0, 6, 1700485571); d = ii(d, a, b, c, x[i2 + 3] || 0, 10, -1894986606);
+      c = ii(c, d, a, b, x[i2 + 10] || 0, 15, -1051523); b = ii(b, c, d, a, x[i2 + 1] || 0, 21, -2054922799);
+      a = ii(a, b, c, d, x[i2 + 8] || 0, 6, 1873313359); d = ii(d, a, b, c, x[i2 + 15] || 0, 10, -30611744);
+      c = ii(c, d, a, b, x[i2 + 6] || 0, 15, -1560198380); b = ii(b, c, d, a, x[i2 + 13] || 0, 21, 1309151649);
+      a = ii(a, b, c, d, x[i2 + 4] || 0, 6, -145523070); d = ii(d, a, b, c, x[i2 + 11] || 0, 10, -1120210379);
+      c = ii(c, d, a, b, x[i2 + 2] || 0, 15, 718787259); b = ii(b, c, d, a, x[i2 + 9] || 0, 21, -343485551);
+      a = add(a, oa); b = add(b, ob); c = add(c, oc); d = add(d, od);
+    }
+    return hex(a) + hex(b) + hex(c) + hex(d);
+  }
+
+  // 渲染工具页
+  let cur = TOOLS[0];
+  function renderTool(t) {
+    cur = t;
+    $('bd').innerHTML = t.html;
+    $('bd').querySelectorAll('button').forEach(b => { b.onclick = () => t.run(b.dataset.a); });
+    if (t.tick) t.tick();
+  }
+  const tabs = $('tabs');
+  for (const t of TOOLS) {
+    const b = document.createElement('button');
+    b.textContent = t.name;
+    if (t === cur) b.classList.add('on');
+    b.onclick = () => {
+      tabs.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      renderTool(t);
+    };
+    tabs.appendChild(b);
+  }
+  renderTool(cur);
+  setInterval(() => { if (cur.tick) cur.tick(); }, 1000);
+
+  strip.onclick = async () => {
+    expanded = !expanded;
+    panel.classList.toggle('open', expanded);
+    await tbp.call(expanded ? 'dock.expand' : 'dock.collapse', { height: 320 });
+  };
+  tbp.on('dock.collapsed', () => { expanded = false; panel.classList.remove('open'); });
+  tbp.ready();
+})();
+</script>
+</body>
+</html>

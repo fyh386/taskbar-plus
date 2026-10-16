@@ -1,0 +1,6 @@
+target/
+node_modules/
+dist/
+tests/out/
+tests/shot-harness/
+*.log
